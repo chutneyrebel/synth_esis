@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 class SpectralIntegrationTests(unittest.TestCase):
     def test_shape_samples_processed_spectrum(self):
         dsp = (ROOT / "src/dsp.c").read_text()
-        self.assertIn("float left=s->curated_osc1?spectral_morph_at(", dsp)
-        self.assertIn("float right=s->curated_osc1?spectral_morph_at(", dsp)
+        self.assertIn("float left=spectral_morph_at(shape_table", dsp)
+        self.assertIn("float right=spectral_morph_at(shape_table", dsp)
         self.assertIn("float avg=.5f*(left+right);", dsp)
         self.assertNotIn("float avg=.5f*(table_at(shape_table", dsp)
 
@@ -31,7 +31,8 @@ class SpectralIntegrationTests(unittest.TestCase):
             page = f"{osc}_spectral"
             self.assertIn(page, root_links)
             expected = [f"{osc}_spectral_{mode}" for mode in ("shift", "fold", "scramble")]
-            self.assertEqual(levels[page]["knobs"], expected)
+            self.assertEqual(levels[page]["knobs"][:3], expected)
+            self.assertEqual(levels[page]["knobs"][3], "wavetable" if osc == "osc1" else "osc2_wavetable")
             for key in expected:
                 self.assertEqual({k: params[key][k] for k in ("type", "min", "max", "default")},
                                  {"type": "int", "min": 0, "max": 100, "default": 0})
