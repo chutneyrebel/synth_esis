@@ -243,10 +243,10 @@ assert.notEqual(nativeLines('filter',{cutoff:15}),nativeLines('filter',{cutoff:8
 // Most important hardware regression: Schwung can hand a fresh physical
 // encoder detent to the canvas while face_snapshot is still one poll behind.
 // The face MUST prefer the encoder, not keep displaying the previous ID.
-function liveFaceLines(face, extra, live) {
+function liveFaceLines(face, extra, live, keys=[]) {
   const lines=[];
   named['sprig_'+face].drawPage({...ctx,line(...args){lines.push(args);}},{
-    nowMs:1000,values:{face_snapshot:snapshot(extra),...live}
+    nowMs:1000,keys,values:{face_snapshot:snapshot(extra),...live}
   });
   return JSON.stringify(lines);
 }
@@ -268,6 +268,25 @@ for(const face of ['osc1','osc2']){
                face+' must remain still when voices are inactive');
 }
 console.log('PASS: live curated encoder beats delayed snapshot and note-gated OSC1/OSC2 animation');
+// The off-page Curated read may lag the face_snapshot on the spectral
+// screen. Unlike a physically touched Curated encoder, it must not win.
+for(const osc of [1,2]){
+  const face='osc'+osc,cid='curated_osc'+osc,mode='osc'+osc+'_source_curated';
+  const wid=osc===1?'wavetable':'osc2_wavetable';
+  const newest=nativeLines(face,{[wid]:116,[cid]:9,[mode]:1});
+  const spectral=['osc'+osc+'_spectral_shift','osc'+osc+'_spectral_fold',
+                  'osc'+osc+'_spectral_scramble',wid];
+  const staleExtra=liveFaceLines(face,{[wid]:116,[cid]:9,[mode]:1},
+                                 {[cid]:8},spectral);
+  assert.equal(staleExtra,newest,
+       face+' stale off-page curated read must not override the newer active source snapshot');
+  const onFace=['curated_osc'+osc,osc===1?'position':'osc2_position'];
+  const knob=liveFaceLines(face,{[wid]:116,[cid]:9,[mode]:1},
+                            {[cid]:8},onFace);
+  assert.notEqual(knob,newest,face+' active Curated knob must beat older snapshot');
+}
+console.log('PASS: osc face uses live Curated knob but spectral face ignores stale off-page curated reads');
+
 // Wavetable 0..107 is a fully active spectral DSP source. Its visual must
 // also respond to the three spectral controls on BOTH OSC spectral pages.
 for(const face of ['osc1','osc2']){
