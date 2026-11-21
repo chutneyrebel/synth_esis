@@ -139,11 +139,12 @@
   ];
   function faceValues(o){
     const initial=(o&&o.values)||{};
-    if(typeof initial.face_snapshot!=='string')return {...initial};
+    const pageKeys=Array.isArray(o&&o.keys)?o.keys:[];
+    if(typeof initial.face_snapshot!=='string')return {...initial,_pageKeys:pageKeys};
     const parts=initial.face_snapshot.split(',');
     if(parts.length!==snapshotKeys.length && parts.length!==35 &&
-       parts.length!==29 && parts.length!==26)return initial;
-    const result={...initial};
+       parts.length!==29 && parts.length!==26)return {...initial,_pageKeys:pageKeys};
+    const result={...initial,_pageKeys:pageKeys};
     for(let i=0;i<parts.length;i++){
       const n=Number(parts[i]);
       if(!Number.isFinite(n))return initial;
@@ -177,9 +178,18 @@
     const legacy=bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',current),current,0,107)|0;
     /* The knob has newer data than the staggered snapshot. In that short
      * window its live selection wins. This also works when turning to 0. */
-    if(Number.isFinite(snapshotSelected) && raw!==snapshotSelected)
-      return raw?107+raw:legacy;
-    if(Number.isFinite(mode))return mode && raw?107+raw:legacy;
+    const pageKeys=values&&values._pageKeys||[];
+    const curatedKnob=pageKeys.indexOf(curatedKey)>=0;
+    if(Number.isFinite(snapshotSelected) && raw!==snapshotSelected){
+      /* A physical Curated knob is authoritative. Off-page curated extras
+       * can be older than face_snapshot, so the snapshot wins there. */
+      if(curatedKnob || pageKeys.length===0)return raw?107+raw:legacy;
+      return mode && snapshotSelected?107+snapshotSelected:legacy;
+    }
+    if(Number.isFinite(mode)){
+      const chosen=!curatedKnob && Number.isFinite(snapshotSelected)?snapshotSelected:raw;
+      return mode && chosen?107+chosen:legacy;
+    }
     /* Pre-upgrade snapshot fallback: an oscillator page with the live curated
      * key must respond to it directly, even when face_snapshot lags. */
     if(values && values[curatedKey]!=null) {
