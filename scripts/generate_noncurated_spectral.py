@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 import re
 from spectral_composition import compose_from_base
+from spectral_shape import _fft
 
 ROOT = Path(__file__).resolve().parents[1]
 WAVES, FRAMES, BANDS, SAMPLES, CORNERS = 108, 4, 9, 256, 7
@@ -56,10 +57,13 @@ def generate(output):
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Cache 108 x 4 x 9 source rows once; generation is offline, not RT.
-    rows = [[[[0.0] * SAMPLES for _ in range(BANDS)]
+    rows = [[[None for _ in range(BANDS)]
              for _ in range(FRAMES)] for _ in range(WAVES)]
+    spectra = [[[None for _ in range(BANDS)]
+                for _ in range(FRAMES)] for _ in range(WAVES)]
     for wave, frame, band, data in generated_source_rows():
         rows[wave][frame][band] = data
+        spectra[wave][frame][band] = _fft(data)[:SAMPLES // 2 + 1]
     with output.open("w", encoding="ascii") as out:
         out.write("/* Generated offline; seven spectral composition corners for 108 existing WT IDs. */\n")
         out.write("#ifndef SYNTH_ESIS_NONCURATED_SPECTRAL_H\n#define SYNTH_ESIS_NONCURATED_SPECTRAL_H\n")
@@ -74,7 +78,8 @@ def generate(output):
                     out.write("{\n")
                     for band, limit in enumerate(BAND_LIMITS):
                         transformed = compose_from_base(rows[source_id][frame][band],
-                                                        frame, limit, source_id, mask)
+                                                        frame, limit, source_id, mask,
+                                                        spectra[source_id][frame][band])
                         quantized = [max(-32768, min(32767, int(round(x * 32767))))
                                      for x in transformed]
                         out.write("{" + ",".join(str(x) for x in quantized) + "},\n")
