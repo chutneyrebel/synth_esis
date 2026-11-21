@@ -44,6 +44,7 @@ typedef struct {
     int osc1_source_curated, osc2_source_curated; /* active bank, preserves both selections */
     int osc1_spectral_shift,osc1_spectral_fold,osc1_spectral_scramble;
     int osc2_spectral_shift,osc2_spectral_fold,osc2_spectral_scramble;
+    int vel_spec; /* Phase 12C: note-on velocity-to-spectral-shift depth, 0 = legacy */
     int osc1_warp_type, osc1_warp, osc1_detune, osc1_octave, osc1_pan, osc1_volume;
     int osc2_wavetable, osc2_position, osc2_warp_type, osc2_warp, osc2_detune, osc2_octave, osc2_pan, osc2_volume;
     int osc2_level, detune, lfo_rate, lfo_depth, lfo_wt_depth, drive;
@@ -173,7 +174,7 @@ static const Param params[]={
     P(osc2_wavetable,107),P(osc2_position,100),P(osc2_warp_type,7),P(osc2_warp,100),P(osc2_detune,100),P(osc2_octave,4),P(osc2_pan,100),P(osc2_volume,100),
     P(osc1_source_curated,1),P(osc2_source_curated,1),
     P(osc2_level,100),P(detune,100),P(lfo_rate,100),P(lfo_depth,100),P(lfo_wt_depth,100),P(drive,100),
-    P(filter_type,7),P(filter_env_amt,100),P(filter_env_attack,2000),P(filter_env_decay,2000),P(lfo_filter,100),P(master_pan,100),P(osc1_env_enabled,1),P(osc2_env_enabled,1),P(osc1_attack,2000),P(osc1_decay,2000),P(osc1_sustain,100),P(osc1_release,2000),P(osc2_attack,2000),P(osc2_decay,2000),P(osc2_sustain,100),P(osc2_release,2000),P(mix_enabled,1),P(mix_balance,100),P(mod_dest,3),P(mod_depth,100),P(lfo2_rate,100),P(lfo2_dest,3),P(lfo2_depth,100),P(lfo1_waveform,5),P(lfo2_waveform,5),P(sync_bpm,240),P(lfo1_sync,5),P(lfo2_sync,5)
+    P(vel_spec,100),P(filter_type,7),P(filter_env_amt,100),P(filter_env_attack,2000),P(filter_env_decay,2000),P(lfo_filter,100),P(master_pan,100),P(osc1_env_enabled,1),P(osc2_env_enabled,1),P(osc1_attack,2000),P(osc1_decay,2000),P(osc1_sustain,100),P(osc1_release,2000),P(osc2_attack,2000),P(osc2_decay,2000),P(osc2_sustain,100),P(osc2_release,2000),P(mix_enabled,1),P(mix_balance,100),P(mod_dest,3),P(mod_depth,100),P(lfo2_rate,100),P(lfo2_dest,3),P(lfo2_depth,100),P(lfo1_waveform,5),P(lfo2_waveform,5),P(sync_bpm,240),P(lfo1_sync,5),P(lfo2_sync,5)
 };
 #define NP ((int)(sizeof(params)/sizeof(params[0])))
 static int *param_ptr(Synth *s,int i){return (int*)((char*)s+params[i].offset);}
@@ -238,6 +239,8 @@ static void set_param(void *instance,const char *key,const char *value){
          * Clear the six newly appended spectral routes before parsing. */
         for(int src=0;src<2;src++)for(int dst=12;dst<18;dst++)
             s->matrix_depth[src][dst]=50;
+        /* Pre-12C states have no velocity sensitivity. */
+        s->vel_spec=0;
         char k[32],v[24];int ix=0;
         while(value[ix] && ix<2048){
             int ki=0,vi=0;
@@ -622,6 +625,11 @@ static void render_block(void *instance,int16_t *out,int frames){
         float sumL=0.f,sumR=0.f;
         for(int i=0;i<SPRIG_VOICES;i++){
             Voice *v=&s->voices[i];if(!v->stage)continue;
+            /* Note-on velocity remains voice-local even in polyphonic chords.
+             * With vel_spec=0 the pre-12C spectral signal is unchanged. */
+            float vel_delta=(v->vel*127.f-64.f)*(1.f/63.f)*(.0035f*(float)s->vel_spec);
+            float shift1=clampf(s->smooth_spectral[0][0]+vel_delta,0.f,1.f);
+            float shift2=clampf(s->smooth_spectral[1][0]+vel_delta,0.f,1.f);
             float env=env_next(s,v),amp1=osc_amp(s,v,0),amp2=osc_amp(s,v,1);if(!v->stage&&amp1<=0.f&&amp2<=0.f)continue;if(v->stage==RELEASE&&env<=0.f&&amp1<=0.f&&amp2<=0.f){v->stage=0;continue;}int newmode=s->mix_enabled||s->osc1_env_enabled||s->osc2_env_enabled;
             float bal=.01f*s->mix_balance,gain1=s->mix_enabled?2.f*(1.f-bal):1.f,gain2=s->mix_enabled?2.f*bal:1.f;
             float table=clampf(s->smooth_table,0.f,107.f);
@@ -633,10 +641,10 @@ static void render_block(void *instance,int16_t *out,int frames){
             float character1=char1?lookup(0,0,0,v->character_phase[0]):0.f;
             if(char1)p1=curated_color_phase(p1,char1,character1,v->character_age,v->band);
             float x=spectral_morph_at(source1,pos,v->band,p1,
-                s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
             if(!(s->osc1_source_curated&&s->curated_osc1) && tm>.00001f)
                 x+=(spectral_morph_at(t1,pos,v->band,p1,
-                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2])-x)*tm;
+                    shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2])-x)*tm;
             float sh=clampf((s->smooth_shape-50.f)/50.f,-1.f,1.f);
             if(sh!=0.f){
                 float ph1=p1+8.f,ph2=p1-8.f;
@@ -644,9 +652,9 @@ static void render_block(void *instance,int16_t *out,int frames){
                 int shape_table=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0;
                 /* Shape samples the same spectral signal as the main oscillator. */
                 float left=spectral_morph_at(shape_table,pos,v->band,ph1,
-                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                    shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
                 float right=spectral_morph_at(shape_table,pos,v->band,ph2,
-                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                    shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
                 float avg=.5f*(left+right);
                 x+=sh<0.f?(avg-x)*(-sh*.9f):(x-avg)*(sh*.85f);
             }
@@ -658,7 +666,7 @@ static void render_block(void *instance,int16_t *out,int frames){
             float character2=char2?lookup(0,0,0,v->character_phase[1]):0.f;
             if(char2)p2=curated_color_phase(p2,char2,character2,v->character_age,v->band);
             float second=spectral_morph_at(source2,pos2,v->band,p2,
-                s->smooth_spectral[1][0],s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
+                shift2,s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
                 (.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
             if(char2)second=curated_color_gain(second,char2,character2,v->band);
             second+=lookup(1,0,v->band,v->phase2)*(.006f*s->osc2_level);if(newmode)second*=gain2*amp2;
