@@ -192,6 +192,26 @@ class SpectralAudioIntegration(unittest.TestCase):
             self.assertGreater(rms([a-b for a,b in zip(original,folded)])/scale,
                                .2, f"OSC{oscillator} Fold made no meaningful difference")
 
+    def test_spectral_effects_are_audible_on_regular_wavetables(self):
+        """Regression for the Move report: Shift/Fold/Scramble stopped working
+        after adjusting Wavetable on either oscillator."""
+        for osc in (1, 2):
+            for wave in (0, 37, 106):
+                base = {"curated_osc1":0, "curated_osc2":0,
+                        "osc1_volume":100 if osc == 1 else 0,
+                        "osc2_volume":100 if osc == 2 else 0,
+                        "wavetable":wave, "osc2_wavetable":wave,
+                        "position":50, "osc2_position":50}
+                dry = self.patch_audio(base)
+                self.assertGreater(rms(dry), 50, ("silent baseline", osc, wave))
+                for effect in ("shift", "fold", "scramble"):
+                    wet = self.patch_audio({**base, f"osc{osc}_spectral_{effect}":100})
+                    diff = rms([a - b for a, b in zip(dry, wet)])
+                    # Absolute and normalized thresholds catch barely visible
+                    # waveform differences as well as silent controls.
+                    self.assertGreater(diff, max(35, .08 * rms(dry)),
+                        (osc, wave, effect, "effect sounds identical", diff))
+
     def test_legacy_wavetable_selection_switches_active_source(self):
         synth = self.api.create(b".",None)
         self.assertTrue(synth)
