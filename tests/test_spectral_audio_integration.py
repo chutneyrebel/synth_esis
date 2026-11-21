@@ -80,6 +80,79 @@ class SpectralAudioIntegration(unittest.TestCase):
         finally:
             self.api.destroy(synth)
 
+    def test_phase12_spectral_routes_are_independent_and_audible(self):
+        """Every added matrix route must change its own OSC and spectral
+        effect under an LFO, without changing any neutral pre-Phase12 sound."""
+        for oscillator in (1,2):
+            for axis,base in enumerate(("shift","fold","scramble")):
+                route=12+(oscillator-1)*3+axis
+                patch={"curated_osc1":8,"curated_osc2":8,
+                       "osc1_volume":100 if oscillator==1 else 0,
+                       "osc2_volume":100 if oscillator==2 else 0,
+                       "osc1_spectral_shift":35,"osc1_spectral_fold":35,
+                       "osc1_spectral_scramble":35,
+                       "osc2_spectral_shift":35,"osc2_spectral_fold":35,
+                       "osc2_spectral_scramble":35,
+                       "lfo1_waveform":0,"lfo_rate":80}
+                baseline=self.patch_audio(patch)
+                neutral=self.patch_audio({**patch,"matrix_source":0,
+                                          "matrix_destination":route,
+                                          "matrix_depth":50})
+                self.assertEqual(baseline,neutral,
+                    f"neutral route {route} must not change the Phase 10/11 sound")
+                wet=self.patch_audio({**patch,"matrix_source":0,
+                                      "matrix_destination":route,
+                                      "matrix_depth":100})
+                change=rms([a-b for a,b in zip(baseline,wet)])
+                self.assertGreater(change,max(20,.04*rms(baseline)),
+                    ("spectral route inaudible",oscillator,base,route,change))
+
+    def test_phase12_matrix_state_roundtrip_and_old_state_neutrality(self):
+        synth=self.api.create(b".",None)
+        other=self.api.create(b".",None)
+        self.assertTrue(synth and other)
+        try:
+            self.setp(synth,"matrix_source",0)
+            self.setp(synth,"matrix_destination",12)
+            self.setp(synth,"matrix_depth",81)
+            self.setp(synth,"matrix_source",1)
+            self.setp(synth,"matrix_destination",17)
+            self.setp(synth,"matrix_depth",14)
+            state=self.getp(synth,"state")
+            self.assertIn("mx0_12=81",state)
+            self.assertIn("mx1_17=14",state)
+            self.assertLess(len(state),2048)
+            self.api.set(other,b"state",state.encode())
+            restored=self.getp(other,"state")
+            self.assertEqual(restored,state)
+            # Simulate loading a Phase 10/11 preset after editing Phase 12:
+            # neither new route is serialized, so both must reset to neutral.
+            old="curated_osc1=8,osc1_spectral_shift=50,level=70,mx0_0=75"
+            self.api.set(other,b"state",old.encode())
+            for source,route in ((0,12),(1,17)):
+                self.setp(other,"matrix_source",source)
+                self.setp(other,"matrix_destination",route)
+                self.assertEqual(self.getp(other,"matrix_depth"),"50")
+            self.setp(other,"matrix_source",0)
+            self.setp(other,"matrix_destination",0)
+            self.assertEqual(self.getp(other,"matrix_depth"),"75")
+        finally:
+            self.api.destroy(synth)
+            self.api.destroy(other)
+
+    def test_phase12_lfo2_stepped_and_smooth_spectral_motion(self):
+        patch={"curated_osc1":8,"osc1_volume":100,"osc2_volume":0,
+               "osc1_spectral_shift":50,"osc1_spectral_fold":0,
+               "osc1_spectral_scramble":0,
+               "matrix_source":1,"matrix_destination":12,"matrix_depth":100,
+               "lfo2_sync":2,"sync_bpm":120,"lfo2_rate":35}
+        neutral=self.patch_audio({**patch,"matrix_depth":50})
+        for waveform in (0,3,4,5):  # sine, square, sample/hold, smooth
+            sound=self.patch_audio({**patch,"lfo2_waveform":waveform})
+            difference=rms([a-b for a,b in zip(neutral,sound)])
+            self.assertGreater(difference,20,(waveform,difference))
+            self.assertGreater(rms(sound),50)
+
     def test_shift_fold_scramble_and_compound_are_audible(self):
         dry = self.patch_audio({})
         self.assertGreater(rms(dry), 100)
