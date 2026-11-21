@@ -164,5 +164,55 @@ class SpectralAudioIntegration(unittest.TestCase):
             self.api.destroy(synth)
 
 
+    def test_curated_metallic_position_moves_both_oscillators_with_spectral_zero(self):
+        for oscillator in (1, 2):
+            params = {"curated_osc1":8, "curated_osc2":8,
+                      "osc1_volume":100 if oscillator == 1 else 0,
+                      "osc2_volume":100 if oscillator == 2 else 0}
+            position = "position" if oscillator == 1 else "osc2_position"
+            low = self.patch_audio({**params, position:0})
+            mid = self.patch_audio({**params, position:50})
+            high = self.patch_audio({**params, position:100})
+            scale = max(rms(low), rms(mid), rms(high), 1)
+            self.assertGreater(rms([a-b for a,b in zip(low,mid)])/scale, .2,
+                               f"OSC{oscillator} POS 0->50 is weak")
+            self.assertGreater(rms([a-b for a,b in zip(mid,high)])/scale, .2,
+                               f"OSC{oscillator} POS 50->100 is weak")
+
+    def test_curated_fold_is_audible_on_both_oscillators(self):
+        for oscillator in (1, 2):
+            settings = {"position":65, "osc2_position":65,
+                        "curated_osc1":8, "curated_osc2":8,
+                        "osc1_volume":100 if oscillator == 1 else 0,
+                        "osc2_volume":100 if oscillator == 2 else 0}
+            prefix = f"osc{oscillator}_spectral_fold"
+            original = self.patch_audio(settings)
+            folded = self.patch_audio({**settings, prefix:100})
+            scale = max(1, rms(original), rms(folded))
+            self.assertGreater(rms([a-b for a,b in zip(original,folded)])/scale,
+                               .2, f"OSC{oscillator} Fold made no meaningful difference")
+
+    def test_legacy_wavetable_selection_switches_active_source(self):
+        synth = self.api.create(b".",None)
+        self.assertTrue(synth)
+        try:
+            for oscillator in (1, 2):
+                curated=f"curated_osc{oscillator}"
+                legacy="wavetable" if oscillator==1 else "osc2_wavetable"
+                snapshot_idx=0 if oscillator==1 else 7
+                self.setp(synth, curated,8)
+                self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),115)
+                self.setp(synth,legacy,27)
+                self.assertEqual(self.getp(synth,curated),"0")
+                self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),27)
+                self.setp(synth,curated,8)
+                state=self.getp(synth,"state")
+                self.api.set(synth,b"state",state.encode())
+                self.assertEqual(self.getp(synth,curated),"8")
+                self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),115)
+        finally:
+            self.api.destroy(synth)
+
+
 if __name__ == "__main__":
     unittest.main()
