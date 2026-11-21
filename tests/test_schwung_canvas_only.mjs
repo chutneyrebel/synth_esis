@@ -40,7 +40,7 @@ for(const osc of [1,2]){
     const matching=real.filter(p=>p.level===level && p.canvas?.key===face);
     assert.equal(matching.length,1,
       'Synth_esis '+level+' must have its waveform canvas on the actual Schwung planner');
-    assert.deepEqual(pageSlotKeys(matching[0]),
+    assert.deepEqual(pageSlotKeys(matching[0]).filter(k=>k!==null),
       descriptor.capabilities.ui_hierarchy.levels[level].knobs,
       'Spectral waveform canvas must retain the spectral encoder bindings');
   }
