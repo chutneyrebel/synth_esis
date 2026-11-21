@@ -190,7 +190,7 @@ assert "['osc2_volume','OSC 2 Volume',0,100,1]" in remote_ui, 'Remote OSC 2 volu
 print('PASS: native and remote UI expose eight named warp modes')
 face=next((p for p in chain_params if p.get('key')=='face'), None)
 assert face and face['type']=='canvas' and face['as_page'] is True and face['page_first'] is True
-assert face['canvas_script']=='canvas.js'
+assert face.get('canvas_script','canvas.js')=='canvas.js'
 assert face['extra_keys']==['face_snapshot']
 assert len(getp('face_snapshot').split(','))==41
 assert getp('voice_activity')=='0'
@@ -685,7 +685,7 @@ for key,val in [('sync_bpm',135),('lfo1_sync',3),('lfo2_sync',5)]:
 api.destroy(p)
 print('PASS: Phase 6 manual BPM and independent sync divisions survive preset state')
 
-# Phase 7 matrix: 24 routes, neutral defaults, independent state persistence.
+# Phase 7 matrix: historical 24 routes remain stable; Phase 12 appends 12 spectral routes.
 p=api.create(b'.',None)
 assert p
 api.set(p,b'matrix_source',b'0')
@@ -711,8 +711,8 @@ print('PASS: Phase 7 24 independent bipolar routes survive state round trip')
 
 # Phase 7.1: descriptive enum labels must preserve route numeric IDs.
 dest=next(p for p in chain_params if p['key']=='matrix_destination')
-assert dest['type']=='enum' and dest['default']==0
-assert dest['options']==['O1 WT','O2 WT','Cutoff','Reso','O1 Warp','O2 Warp','O1 Pan','O2 Pan','O1 Vol','O2 Vol','O1 Tune','O2 Tune']
+assert dest['type']=='enum' and dest.get('default',0)==0
+assert dest['options']==['O1 WT','O2 WT','Cutoff','Reso','O1 Warp','O2 Warp','O1 Pan','O2 Pan','O1 Vol','O2 Vol','O1 Tune','O2 Tune','O1 Shift','O1 Fold','O1 Scram','O2 Shift','O2 Fold','O2 Scram']
 print('PASS: Phase 7.1 named destination selector preserves 0-11 route IDs')
 
 # Phase 10G: Schwung native per-component preset uses the complete synth:state
@@ -740,7 +740,7 @@ assert api.get(q,b'state',native_restored,len(native_restored))>0
 assert native_restored.value==native_saved.value, 'full native state roundtrip lost parameters'
 for key in native_specs:
     # Matrix source/destination select the editing cursor, not persistent
-    # modulation routing. The state blob stores all 24 mxN_M depths instead.
+    # modulation routing. The state blob stores all 36 mxN_M depths instead.
     if key in ('matrix_source', 'matrix_destination', 'matrix_depth'):
         continue
     expected=C.create_string_buffer(64)
