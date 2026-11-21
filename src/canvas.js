@@ -131,11 +131,13 @@
     'osc1_pan','osc1_volume','osc2_wavetable','osc2_position',
     'osc2_warp_type','osc2_warp','osc2_detune','osc2_pan','osc2_volume',
     'shape','lfo_rate','lfo_depth','lfo_wt_depth','cutoff','resonance',
-    'drive','filter_env_amt','lfo_filter','master_pan','filter_type','voice_activity','matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate'
+    'drive','filter_env_amt','lfo_filter','master_pan','filter_type','voice_activity','matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate',
+    'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
+    'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble'
   ];
   function faceValues(o){
     const initial=(o&&o.values)||{};
-    if(typeof initial.face_snapshot!=='string')return initial;
+    if(typeof initial.face_snapshot!=='string')return {...initial};
     const parts=initial.face_snapshot.split(',');
     if(parts.length!==snapshotKeys.length && parts.length!==26)return initial;
     const result={...initial};
@@ -159,9 +161,79 @@
     else if(mode===7){const steps=64-60*a;p=Math.floor(p*steps)/steps;}
     return Math.max(0,Math.min(.99999,p));
   }
+  /* Curated oscillator display uses the *active* ID from the DSP snapshot.
+   * This is a responsive harmonic illustration, not a measured FFT. Build
+   * only once per canvas render, then reuse coefficients for every pixel. */
+  const curatedCenters=[
+    [[1],[1],[1],[1]],
+    [[3,7,12],[3,10,19],[7,18,27],[12,24,33]],
+    [[3,7,11],[5,9,15],[9,17,25],[5,17,31]],
+    [[3,7,13],[5,11,19],[7,17,25],[15,23,33]],
+    [[3,7,15],[5,11,21],[9,17,29],[7,23,35]],
+    [[3,9,17],[5,14,23],[8,21,32],[4,26,36]],
+    [[4,10,17],[10,15,24],[19,26,33],[5,25,37]],
+    [[4,9,17],[8,14,23],[5,17,29],[11,20,33]],
+    [[6,13,20],[9,16,27],[4,19,33],[12,25,38]],
+    [[3,11,18],[5,14,23],[8,20,29],[4,9,34]],
+    [[3,6,11],[8,14,20],[16,25,31],[27,34,40]],
+    [[4,7,12],[9,15,23],[17,25,33],[30,36,41]],
+    [[2,5,9],[4,11,17],[7,15,26],[3,19,37]],
+    [[3,6,11],[9,15,22],[18,27,35],[34,39,43]],
+    [[3,7,11],[6,13,19],[11,23,35],[19,32,43]],
+    [[5,9,15],[11,18,27],[20,30,39],[35,41,45]]
+  ];
+  function curatedPreviewSpectrum(id,pos,shift,fold,scramble){
+    const top=24,kind=Math.max(0,Math.min(15,id-108));
+    const fpos=Math.max(0,Math.min(3,pos*3)),f0=Math.floor(fpos),f1=Math.min(3,f0+1);
+    let mix=fpos-f0;mix=mix*mix*(3-2*mix);
+    const weights=Array(top+1).fill(0);
+    for(let h=1;h<=top;h++){
+      if(kind===0){weights[h]=h===1?1:0;continue;}
+      const scene=(frame)=>{
+        const centers=curatedCenters[kind][frame];
+        let v=h===1?.23:.018/Math.sqrt(h);
+        if(kind===2 || kind===3 || kind===4){if((h&1)===0)v*=.08;}
+        for(let j=0;j<centers.length;j++){
+          const z=(h-centers[j])/(1.35+j*.55);
+          v+=[1.25,1.0,.65][j]*Math.exp(-.5*z*z);
+        }
+        return v;
+      };
+      weights[h]=(1-mix)*scene(f0)+mix*scene(f1);
+    }
+    /* Keep the lower harmonics recognizable; spectral controls change the
+     * shape even when only one parameter is moved. */
+    const p=3;
+    let current=weights;
+    if(shift>0){
+      const next=current.slice(),dist=Math.max(1,Math.min(8,Math.round(shift*8)));
+      for(let k=p+1;k<=top;k++)next[k]=current[k]*(1-shift);
+      for(let k=p+1;k+dist<=top;k++)next[k+dist]+=current[k]*shift;
+      current=next;
+    }
+    if(fold>0){
+      const next=current.slice(),span=8,period=span*2;
+      for(let k=p+1;k<=top;k++)next[k]=current[k]*(1-fold);
+      for(let k=p+1;k<=top;k++){
+        const off=(k-p-1)%period,target=p+1+(off<=span?off:period-off);
+        next[target]+=current[k]*fold;
+      }
+      current=next;
+    }
+    if(scramble>0){
+      const next=current.slice(),count=top-p;
+      for(let k=p+1;k<=top;k++){
+        const src=p+1+(((k-p-1)*5+kind*3)%count);
+        next[k]=current[k]*(1-scramble)+current[src]*scramble;
+      }
+      current=next;
+    }
+    const norm=Math.max(.001,current.reduce((a,b)=>a+Math.abs(b),0));
+    return current.map(v=>v*(3.0/norm));
+  }
   function oscillatorPreview(phase,v,osc2,seconds,active){
     const prefix=osc2?'osc2_':'osc1_';
-    const id=bounded(value(v,osc2?'osc2_wavetable':'wavetable',1),1,0,107)|0;
+    const id=bounded(value(v,osc2?'osc2_wavetable':'wavetable',1),1,0,123)|0;
     const wave=Math.min(3,id),bank=id>=4?1:0,table=Math.max(0,id-4);
     const position=bounded(value(v,osc2?'osc2_position':'position',50),50,0,100)/100;
     const rate=bounded(value(v,'lfo_rate',22),22,0,100);
@@ -174,6 +246,18 @@
     const raw=((phase+slip)%1+1)%1;
     const warped=warpedPhase(raw,bounded(value(v,prefix+'warp_type',0),0,0,7)|0,value(v,prefix+'warp',0));
     const shape=osc2?50:bounded(value(v,'shape',50),50,0,100);
+    if(id>=108){
+      const cacheKey=osc2?'spectrum2':'spectrum1';
+      if(!v[cacheKey])v[cacheKey]=curatedPreviewSpectrum(id,pos,
+        bounded(value(v,prefix+'spectral_shift',0),0,0,100)/100,
+        bounded(value(v,prefix+'spectral_fold',0),0,0,100)/100,
+        bounded(value(v,prefix+'spectral_scramble',0),0,0,100)/100);
+      const amps=v[cacheKey];
+      let sample=0;
+      for(let h=1;h<amps.length;h++)sample+=amps[h]*Math.sin(warped*6.28318530718*h+
+        (id>=115?h*h*.037+pos*3*h*.13:0));
+      return Math.max(-1,Math.min(1,sample));
+    }
     return displayedWave(warped,wave,pos,bank,table,shape,shape);
   }
   function drawOscillators(ctx,v,which,seconds,active,W,H){
