@@ -50,7 +50,7 @@ typedef struct {
     int filter_env_amt, filter_env_attack, filter_env_decay, lfo_filter, master_pan, filter_type, mod_dest, mod_depth, lfo2_rate, lfo2_dest, lfo2_depth, lfo1_waveform, lfo2_waveform, sync_bpm, lfo1_sync, lfo2_sync;
 int osc1_env_enabled,osc2_env_enabled,osc1_attack,osc1_decay,osc1_sustain,osc1_release,osc2_attack,osc2_decay,osc2_sustain,osc2_release,mix_enabled,mix_balance;
     int matrix_source, matrix_destination;
-    int matrix_depth[2][12]; /* 50 = neutral */
+    int matrix_depth[2][18]; /* append 6 spectral routes; 50 = neutral */
     float lfo_phase, lfo2_phase;
     unsigned lfo_cycle, lfo2_cycle;
     float smooth_wave, smooth_position, smooth_bank, smooth_table, smooth_shape, smooth_g, smooth_res, smooth_level, smooth_master_pan;
@@ -105,7 +105,7 @@ static void defaults(Synth *s){
     s->osc2_wavetable=1;s->osc2_position=50;s->osc2_warp_type=0;s->osc2_warp=0;s->osc2_detune=50;s->osc2_octave=2;s->osc2_pan=50;s->osc2_volume=0;
     s->osc2_level=0;s->detune=50;s->lfo_rate=22;s->lfo_depth=0;s->lfo_wt_depth=0;s->drive=0;
     s->filter_env_amt=0;s->filter_env_attack=5;s->filter_env_decay=400;s->lfo_filter=0;s->master_pan=50;s->osc1_attack=s->osc2_attack=10;s->osc1_decay=s->osc2_decay=230;s->osc1_sustain=s->osc2_sustain=72;s->osc1_release=s->osc2_release=240;s->mix_balance=50;s->mod_depth=50;s->lfo2_rate=22;s->sync_bpm=120;s->lfo2_depth=50;
-    for(int src=0;src<2;src++)for(int dst=0;dst<12;dst++)s->matrix_depth[src][dst]=50;
+    for(int src=0;src<2;src++)for(int dst=0;dst<18;dst++)s->matrix_depth[src][dst]=50;
     s->smooth_wave=1;s->smooth_position=1.5f;s->smooth_bank=0;s->smooth_table=1;s->smooth_shape=50;
     s->smooth_g=sprig_cutoff_g[s->cutoff];
     s->smooth_res=0.15f;s->smooth_level=.65f;s->smooth_master_pan=50.f;
@@ -200,10 +200,10 @@ static void set_one(Synth *s,const char *key,const char *value,int loading_state
         return;
     }
     if(eq(key,"matrix_source")){s->matrix_source=clampi(integer(value),0,1);return;}
-    if(eq(key,"matrix_destination")){s->matrix_destination=clampi(integer(value),0,11);return;}
+    if(eq(key,"matrix_destination")){s->matrix_destination=clampi(integer(value),0,17);return;}
     if(eq(key,"matrix_depth")){s->matrix_depth[s->matrix_source][s->matrix_destination]=clampi(integer(value),0,100);return;}
     if(key[0]=='m'&&key[1]=='x'&&key[2]>='0'&&key[2]<='1'&&key[3]=='_'){
-        int n=integer(key+4);if(n>=0&&n<12)s->matrix_depth[key[2]-'0'][n]=clampi(integer(value),0,100);return;
+        int n=integer(key+4);if(n>=0&&n<18)s->matrix_depth[key[2]-'0'][n]=clampi(integer(value),0,100);return;
     }
     /* Stable proxy keys are necessary because Schwung caches physical knob
      * mappings when the component is loaded. */
@@ -234,6 +234,10 @@ static void set_param(void *instance,const char *key,const char *value){
          * selection from the saved curated index until explicit mode keys
          * (present in newer state snapshots) override it. */
         s->osc1_source_curated=s->osc2_source_curated=0;
+        /* Older Phase 10/11 presets include just the first 12 matrix routes.
+         * Clear the six newly appended spectral routes before parsing. */
+        for(int src=0;src<2;src++)for(int dst=12;dst<18;dst++)
+            s->matrix_depth[src][dst]=50;
         char k[32],v[24];int ix=0;
         while(value[ix] && ix<2048){
             int ki=0,vi=0;
@@ -315,7 +319,7 @@ static int get_param(void *instance,const char *key,char *buf,int len){
             at=append_int(buf,len,at,*param_ptr(s,i));
             if(at<0){buf[0]=0;return -1;}
         }
-        for(int src=0;src<2;src++)for(int dst=0;dst<12;dst++){
+        for(int src=0;src<2;src++)for(int dst=0;dst<18;dst++){
             at=append(buf,len,at,",mx");at=append_int(buf,len,at,src);
             at=append(buf,len,at,"_");at=append_int(buf,len,at,dst);
             at=append(buf,len,at,"=");at=append_int(buf,len,at,s->matrix_depth[src][dst]);
@@ -574,12 +578,10 @@ static void render_block(void *instance,int16_t *out,int frames){
         s->smooth_master_pan+=.004f*((float)s->master_pan-s->smooth_master_pan);
         /* About 5.7 ms one-pole time constant at 44.1 kHz; avoids clicks on
          * abrupt hardware encoder/preset changes without allocating or locking. */
-        s->smooth_spectral[0][0]+=.004f*((float)s->osc1_spectral_shift*.01f-s->smooth_spectral[0][0]);
-        s->smooth_spectral[0][1]+=.004f*((float)s->osc1_spectral_fold*.01f-s->smooth_spectral[0][1]);
-        s->smooth_spectral[0][2]+=.004f*((float)s->osc1_spectral_scramble*.01f-s->smooth_spectral[0][2]);
-        s->smooth_spectral[1][0]+=.004f*((float)s->osc2_spectral_shift*.01f-s->smooth_spectral[1][0]);
-        s->smooth_spectral[1][1]+=.004f*((float)s->osc2_spectral_fold*.01f-s->smooth_spectral[1][1]);
-        s->smooth_spectral[1][2]+=.004f*((float)s->osc2_spectral_scramble*.01f-s->smooth_spectral[1][2]);
+        /* The spectral smoothers are updated AFTER both LFO samples.
+         * Modulation is additive/bipolar, 50 = neutral, and clamped to 0..1.
+         * Their center remains the manually selected depth; this preserves
+         * the old audio path exactly when the new routes are neutral. */
         /* One global low-frequency modulator for subtle continuous wavetable motion. */
         float lfo_hz=lfo_frequency(s->lfo1_sync,s->lfo_rate,s->sync_bpm);
         s->lfo_phase+=lfo_hz*(256.f/SR);
@@ -590,10 +592,22 @@ static void render_block(void *instance,int16_t *out,int frames){
         if(s->lfo2_phase>=256.f){s->lfo2_phase-=256.f;s->lfo2_cycle++;}
         float lfo2=lfo_waveform_sample(s->lfo2_waveform,s->lfo2_phase,s->lfo2_cycle);
         float mod2=(.01f*(float)(s->lfo2_depth-50))*lfo2;
-        float mx[12];
-        for(int d=0;d<12;d++)
+        float mx[18];
+        for(int d=0;d<18;d++)
             mx[d]=((float)(s->matrix_depth[0][d]-50)*.02f)*lfo+
                   ((float)(s->matrix_depth[1][d]-50)*.02f)*lfo2;
+        /* New spectral modulation destinations: 12..14 OSC1 and
+         * 15..17 OSC2 (Shift/Fold/Scramble). +/-50 depth percentage points
+         * is enough for evolving timbres without an uncontrolled jump. */
+        const int spectral_base[2][3]={
+            {s->osc1_spectral_shift,s->osc1_spectral_fold,s->osc1_spectral_scramble},
+            {s->osc2_spectral_shift,s->osc2_spectral_fold,s->osc2_spectral_scramble}
+        };
+        for(int osc=0;osc<2;osc++)for(int axis=0;axis<3;axis++){
+            float target=clampf((float)spectral_base[osc][axis]*.01f+
+                                .5f*mx[12+3*osc+axis],0.f,1.f);
+            s->smooth_spectral[osc][axis]+=.004f*(target-s->smooth_spectral[osc][axis]);
+        }
         float wave=clampf(s->smooth_wave,0,3);
         float mod=(.01f*(float)(s->mod_depth-50))*lfo;
         float pos=clampf(s->smooth_position + (.015f*s->lfo_depth+.015f*s->lfo_wt_depth)*lfo+(s->mod_dest==1?mod:0.f)+(s->lfo2_dest==1?mod2:0.f)+mx[0],0,3);
