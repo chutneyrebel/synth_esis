@@ -494,7 +494,7 @@ static float curated_color_ratio(int curated){
 }
 static float curated_color_phase(float p,int curated,float mod,float age,int band){
     float depth=1.f;
-    if(band>=7)depth=0.f;else if(band==6)depth=.25f;
+    if(band>=7)depth=0.f;else if(band==6)depth=.12f;else if(band==5)depth=.32f;else if(band==4)depth=.65f;
     float offset=0.f;
     switch(curated){
       case 9: offset=9.f*mod;break;
