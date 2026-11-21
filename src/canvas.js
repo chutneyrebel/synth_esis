@@ -148,6 +148,28 @@
     }
     return result;
   }
+  /* Schwung publishes the touched encoder key immediately, while
+   * face_snapshot is polled on a staggered extra-key schedule. Never let
+   * the older snapshot overwrite a newer curated knob detent.
+   * Keeping both values local to this paint avoids DSP-side reads. */
+  function activeSourceId(values, osc2) {
+    const legacyKey=osc2?'osc2_wavetable':'wavetable';
+    const curatedKey=osc2?'curated_osc2':'curated_osc1';
+    const modeKey=osc2?'osc2_source_curated':'osc1_source_curated';
+    const current=bounded(value(values,legacyKey,1),1,0,123)|0;
+    const raw=bounded(value(values,curatedKey,0),0,0,16)|0;
+    const mode=value(values,modeKey,NaN);
+    if(Number.isFinite(mode)){
+      return mode && raw?107+raw:bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',current),current,0,107)|0;
+    }
+    /* Pre-upgrade snapshot fallback: an oscillator page with the live curated
+     * key must respond to it directly, even when face_snapshot lags. */
+    if(values && values[curatedKey]!=null) {
+      return raw?107+raw:current<=107?current:
+        bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',1),1,0,107)|0;
+    }
+    return current;
+  }
   /* Same piecewise warp curves as DSP, drawn on a low-cost mono preview. */
   function warpedPhase(p,mode,amount){
     const a=bounded(amount,0,0,100)/100;
@@ -233,7 +255,7 @@
   }
   function oscillatorPreview(phase,v,osc2,seconds,active){
     const prefix=osc2?'osc2_':'osc1_';
-    const id=bounded(value(v,osc2?'osc2_wavetable':'wavetable',1),1,0,123)|0;
+    const id=activeSourceId(v,osc2);
     const wave=Math.min(3,id),bank=id>=4?1:0,table=Math.max(0,id-4);
     const position=bounded(value(v,osc2?'osc2_position':'position',50),50,0,100)/100;
     const rate=bounded(value(v,'lfo_rate',22),22,0,100);
@@ -243,7 +265,10 @@
     const pos=Math.max(0,Math.min(1,position+modulation));
     const detune=bounded(value(v,prefix+'detune',50),50,0,100);
     const slip=active?seconds*(detune-50)*.0005776*2:0;
-    const raw=((phase+slip)%1+1)%1;
+    /* Note-gated movement is visible without requiring an LFO assignment.
+     * This is a visual phase drift, not a claim of live audio readback. */
+    const visualMotion=(active && id>=108)?seconds*(.011+.0014*(id-108)):0;
+    const raw=((phase+slip+visualMotion)%1+1)%1;
     const warped=warpedPhase(raw,bounded(value(v,prefix+'warp_type',0),0,0,7)|0,value(v,prefix+'warp',0));
     const shape=osc2?50:bounded(value(v,'shape',50),50,0,100);
     if(id>=108){
