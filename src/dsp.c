@@ -31,6 +31,7 @@ typedef struct plugin_api_v2 {
 
 typedef struct {
     float phase, phase2, increment, env, vel, release_step;
+    float character_phase[2], character_age; /* independent per-oscillator timbre clocks */
     float ic1, ic2, ic1_r, ic2_r, ic3, ic4, ic3_r, ic4_r, filter_env, smooth_cut;
     float oe[2],ors[2];uint8_t os[2];uint8_t filter_stage;
     unsigned age;
@@ -474,6 +475,50 @@ static float spectral_morph_at(int index,float position,int band,float phase,
     return table_at(index,position,band,phase);
 }
 #endif
+/* Curated 9..16 need different sound physics, not eight filtered copies
+ * of Metallic. Introduce low-cost, oscillator-local, noninteger-ratio phase
+ * modulation for selected timbres. No FFT, memory allocation or host reads.
+ * The original 0..107 bank and curated 1..8 remain untouched. */
+static float curated_color_ratio(int curated){
+    switch(curated){
+      case 9:return 1.4142136f;   /* glass partials */
+      case 10:return .501f;       /* vowel / speech-like formant motion */
+      case 11:return .997f;       /* slowly drifting organic pulse */
+      case 12:return 2.01f;       /* narrow resonant reed */
+      case 13:return 2.4142136f;  /* inharmonic bell sidebands */
+      case 14:return .721f;       /* continuously moving spectral sweep */
+      case 15:return 3.171f;      /* fractured, noninteger clusters */
+      case 16:return 5.731f;      /* rough, noise-like partials */
+      default:return 1.f;
+    }
+}
+static float curated_color_phase(float p,int curated,float mod,float age,int band){
+    float depth=1.f;
+    if(band>=7)depth=0.f;else if(band==6)depth=.25f;
+    float offset=0.f;
+    switch(curated){
+      case 9: offset=9.f*mod;break;
+      case 10:offset=4.f*mod;break;
+      case 11:offset=13.f*mod;break;
+      case 12:offset=2.f*mod;break;
+      case 13:offset=24.f*mod/(1.f+age*4.f);break;
+      case 14:offset=11.f*mod;break;
+      case 15:offset=16.f*mod;break;
+      case 16:offset=20.f*mod;break;
+      default:break;
+    }
+    p+=offset*depth;
+    if(p>=256.f)p-=256.f;
+    if(p<0.f)p+=256.f;
+    return p;
+}
+static float curated_color_gain(float signal,int curated,float mod){
+    /* Keep gain bounded; contrasts are in temporal character, not loudness. */
+    if(curated==10)return signal*(.82f+.18f*(1.f+mod)*.5f);
+    if(curated==11)return signal*(.87f+.13f*(1.f+mod)*.5f);
+    if(curated==16)return signal*(.72f+.28f*(mod<0.f?-mod:mod));
+    return signal;
+}
 static int16_t pcm(float f){
     float x=clampf(f*32767.0f,-32767.f,32767.f);
     return (int16_t)(x>=0.f?x+.5f:x-.5f);
@@ -564,6 +609,9 @@ static void render_block(void *instance,int16_t *out,int frames){
             float p1=warp_phase(v->phase/256.f,s->osc1_warp_type,clampf((float)s->osc1_warp+mx[4]*50.f,0.f,100.f))*256.f;
             /* Spectral processing applies equally to curated and legacy sources. */
             int source1=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0;
+            int char1=source1>=116?source1-107:0;
+            float character1=char1?lookup(0,0,0,v->character_phase[0]):0.f;
+            if(char1)p1=curated_color_phase(p1,char1,character1,v->character_age,v->band);
             float x=spectral_morph_at(source1,pos,v->band,p1,
                 s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
             if(!(s->osc1_source_curated&&s->curated_osc1) && tm>.00001f)
@@ -582,21 +630,30 @@ static void render_block(void *instance,int16_t *out,int frames){
                 float avg=.5f*(left+right);
                 x+=sh<0.f?(avg-x)*(-sh*.9f):(x-avg)*(sh*.85f);
             }
+            if(char1)x=curated_color_gain(x,char1,character1);
             x*=.01f*clampf((float)s->osc1_volume+mx[8]*50.f,0.f,100.f);if(newmode)x*=gain1*amp1;
             float p2=warp_phase(v->phase2/256.f,s->osc2_warp_type,clampf((float)s->osc2_warp+mx[5]*50.f,0.f,100.f))*256.f;
             int source2=(s->osc2_source_curated&&s->curated_osc2)?107+s->curated_osc2:s->osc2_wavetable;
+            int char2=source2>=116?source2-107:0;
+            float character2=char2?lookup(0,0,0,v->character_phase[1]):0.f;
+            if(char2)p2=curated_color_phase(p2,char2,character2,v->character_age,v->band);
             float second=spectral_morph_at(source2,pos2,v->band,p2,
                 s->smooth_spectral[1][0],s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
                 (.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
+            if(char2)second=curated_color_gain(second,char2,character2);
             second+=lookup(1,0,v->band,v->phase2)*(.006f*s->osc2_level);if(newmode)second*=gain2*amp2;
             float pan1=.01f*clampf((float)s->osc1_pan+mx[6]*50.f,0.f,100.f),pan2=.01f*clampf((float)s->osc2_pan+mx[7]*50.f,0.f,100.f);
             float left=x*(1.f-pan1)+second*(1.f-pan2);
             float right=x*pan1+second*pan2;
             x=left+right;
-            v->phase2+=v->increment*(1.f+.0005776f*(clampf((float)s->osc2_detune+mx[11]*50.f,0.f,100.f)-50.f))*(s->osc2_octave==0?.25f:s->osc2_octave==1?.5f:s->osc2_octave==3?2.f:s->osc2_octave==4?4.f:1.f);
-            while(v->phase2>=256.f)v->phase2-=256.f;
-            v->phase+=v->increment*(1.f+.0005776f*(clampf((float)s->osc1_detune+mx[10]*50.f,0.f,100.f)-50.f))*(s->osc1_octave==0?.25f:s->osc1_octave==1?.5f:s->osc1_octave==3?2.f:s->osc1_octave==4?4.f:1.f);
-            while(v->phase>=256.f)v->phase-=256.f;
+            float step2=v->increment*(1.f+.0005776f*(clampf((float)s->osc2_detune+mx[11]*50.f,0.f,100.f)-50.f))*(s->osc2_octave==0?.25f:s->osc2_octave==1?.5f:s->osc2_octave==3?2.f:s->osc2_octave==4?4.f:1.f);
+            float step1=v->increment*(1.f+.0005776f*(clampf((float)s->osc1_detune+mx[10]*50.f,0.f,100.f)-50.f))*(s->osc1_octave==0?.25f:s->osc1_octave==1?.5f:s->osc1_octave==3?2.f:s->osc1_octave==4?4.f:1.f);
+            v->phase2+=step2;while(v->phase2>=256.f)v->phase2-=256.f;
+            v->phase+=step1;while(v->phase>=256.f)v->phase-=256.f;
+            v->character_phase[0]+=step1*curated_color_ratio(char1);
+            v->character_phase[1]+=step2*curated_color_ratio(char2);
+            for(int osc=0;osc<2;osc++)while(v->character_phase[osc]>=256.f)v->character_phase[osc]-=256.f;
+            if(v->character_age<8.f)v->character_age+=1.f/SR;
             /* Soft clipping before filter: independent nonlinear shaper. */
             if(s->drive>0){float d=.03f*(float)s->drive;float u=left*(1.f+d);left=u/(1.f+(u<0.f?-u:u)*d*.25f);u=right*(1.f+d);right=u/(1.f+(u<0.f?-u:u)*d*.25f);}
             /* Triggered filter envelope (attack then decay to zero). */
