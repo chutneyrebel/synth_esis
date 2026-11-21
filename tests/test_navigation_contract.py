@@ -22,10 +22,13 @@ class NavigationContractTests(unittest.TestCase):
     def test_face_precedes_all_child_levels(self):
         root = self.module["capabilities"]["ui_hierarchy"]["levels"]["root"]
         first, *remaining = root["params"]
-        self.assertEqual(first["key"], "face")
-        self.assertEqual(first["type"], "canvas")
-        self.assertIs(first["as_page"], True)
-        self.assertIs(first["page_first"], True)
+        self.assertEqual(first, "face")
+        # The FACE declaration is present once in chain_params; hierarchy
+        # references it by key to avoid duplicate metadata and preserve order.
+        params={p["key"]:p for p in self.module["capabilities"]["chain_params"]}
+        self.assertEqual(params[first]["type"], "canvas")
+        self.assertIs(params[first]["as_page"], True)
+        self.assertIs(params[first]["page_first"], True)
         self.assertEqual([p["level"] for p in remaining], EXPECTED_LEVELS)
 
     def test_face_encoder_bindings_preserved(self):
