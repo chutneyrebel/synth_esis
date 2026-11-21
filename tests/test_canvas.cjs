@@ -169,7 +169,9 @@ const snapshotOrder=[
   'lfo_filter','master_pan','filter_type','voice_activity',
   'matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate',
   'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
-  'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble'
+  'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble',
+  'curated_osc1','curated_osc2','osc1_source_curated','osc2_source_curated',
+  'raw_wavetable','raw_osc2_wavetable'
 ];
 function snapshot(extra={}){
   const state={wavetable:1,position:50,osc1_warp_type:0,osc1_warp:0,
@@ -181,6 +183,12 @@ function snapshot(extra={}){
     matrix_cutoff_lfo1:50,matrix_cutoff_lfo2:50,lfo2_rate:22,
     osc1_spectral_shift:0,osc1_spectral_fold:0,osc1_spectral_scramble:0,
     osc2_spectral_shift:0,osc2_spectral_fold:0,osc2_spectral_scramble:0,...extra};
+  for(const [id, legacy] of [['1','wavetable'],['2','osc2_wavetable']]){
+    const curated='curated_osc'+id, mode='osc'+id+'_source_curated', raw=id==='1'?'raw_wavetable':'raw_osc2_wavetable';
+    if(extra[curated]===undefined)state[curated]=Math.max(0,state[legacy]-107);
+    if(extra[mode]===undefined)state[mode]=state[legacy]>107?1:0;
+    if(extra[raw]===undefined)state[raw]=Math.min(107,state[legacy]);
+  }
   return snapshotOrder.map(k=>state[k]).join(',');
 }
 function nativeLines(face,extra={},nowMs=1000){
@@ -232,6 +240,35 @@ assert.notEqual(nativeLines('filter',{cutoff:15}),nativeLines('filter',{cutoff:8
                    face+' curated wavetable selection must update the waveform');
  }
  console.log('PASS: new curated sources, spectral axes and WT position drive both oscillator faces');
+// Most important hardware regression: Schwung can hand a fresh physical
+// encoder detent to the canvas while face_snapshot is still one poll behind.
+// The face MUST prefer the encoder, not keep displaying the previous ID.
+function liveFaceLines(face, extra, live) {
+  const lines=[];
+  named['sprig_'+face].drawPage({...ctx,line(...args){lines.push(args);}},{
+    nowMs:1000,values:{face_snapshot:snapshot(extra),...live}
+  });
+  return JSON.stringify(lines);
+}
+for(const face of ['osc1','osc2']){
+  const is2=face==='osc2';
+  const source=is2?'osc2_wavetable':'wavetable';
+  const curated=is2?'curated_osc2':'curated_osc1';
+  const active=is2?'osc2_source_curated':'osc1_source_curated';
+  const baseline=liveFaceLines(face,{[source]:115,[curated]:8,[active]:1},{[curated]:8});
+  const turned=liveFaceLines(face,{[source]:115,[curated]:8,[active]:1},{[curated]:9});
+  assert.notEqual(baseline,turned,face+' must redraw when live Curated 8->9 but snapshot still says 8');
+  const cleared=liveFaceLines(face,{[source]:115,[curated]:8,[active]:1},{[curated]:0});
+  assert.notEqual(baseline,cleared,face+' must redraw when Curated is changed to zero');
+  assert.notEqual(nativeLines(face,{[source]:115,[curated]:8,[active]:1,voice_activity:1},1000),
+                  nativeLines(face,{[source]:115,[curated]:8,[active]:1,voice_activity:1},1800),
+                  face+' must visibly animate on held notes without LFO depth');
+  assert.equal(nativeLines(face,{[source]:115,[curated]:8,[active]:1,voice_activity:0},1000),
+               nativeLines(face,{[source]:115,[curated]:8,[active]:1,voice_activity:0},1800),
+               face+' must remain still when voices are inactive');
+}
+console.log('PASS: live curated encoder beats delayed snapshot and note-gated OSC1/OSC2 animation');
+
 console.log('PASS: OSC1, OSC2, MAIN and FILTER native face snapshots, warp and motion');
 
 assert.notEqual(nativeLines('filter',{filter_type:0}),nativeLines('filter',{filter_type:1}),'Filter FACE must change with mode');
