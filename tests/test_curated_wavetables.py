@@ -49,6 +49,27 @@ class CuratedWavetableTests(unittest.TestCase):
             self.assertGreater(sum(abs(x-y) for x,y in zip(a,b)),.42,
                                "Metallic Position must reshape harmonics")
 
+    def test_upper_curated_families_survive_a_partially_closed_filter(self):
+        # Earlier IDs 9..16 were mostly high Gaussian clusters with matching
+        # phase maps. At C4 and a moderate cutoff those clusters vanished,
+        # leaving eight similar metallic-sounding leftovers.
+        def low_partial_profile(table, frame):
+            spectrum=_fft(generate_row(table,frame,48))
+            mags=[abs(spectrum[h]) for h in range(1,13)]
+            total=sum(mags) or 1
+            return [m/total for m in mags]
+        for frame in range(4):
+            profiles=[low_partial_profile(table,frame) for table in range(7,16)]
+            for table in range(8,16):
+                distance=sum(abs(a-b) for a,b in zip(profiles[0],profiles[table-7]))
+                self.assertGreater(distance,.22,
+                    ("curated sounds like metallic under lowpass",NAMES[table],frame,distance))
+        for table in range(8,16):
+            frames=[low_partial_profile(table,frame) for frame in range(4)]
+            self.assertGreater(max(sum(abs(a-b) for a,b in zip(frames[0],frames[end]))
+                                   for end in (1,2,3)),.26,
+                               ("curated low harmonics fail to evolve",NAMES[table]))
+
     def test_sine_is_nearly_pure(self):
         bins = _fft(generate_row(0, 0, 96))
         self.assertLess(max(abs(x) for x in bins[2:96]), 1e-8)
