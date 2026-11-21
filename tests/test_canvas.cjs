@@ -122,7 +122,7 @@ function wtLfoTrace(depth,nowMs,voices=1){
   });
   return JSON.stringify(lines);
 }
-assert.equal(wtLfoTrace(0,1000),wtLfoTrace(0,1700));
+assert.notEqual(wtLfoTrace(0,1000),wtLfoTrace(0,1700),'held notes must animate even without LFO modulation');
 assert.equal(wtLfoTrace(100,1000,0),wtLfoTrace(100,1700,0));
 assert.notEqual(wtLfoTrace(100,1000),wtLfoTrace(100,1700));
 console.log('PASS: dedicated WT LFO animates physical waveform only while sounding');
