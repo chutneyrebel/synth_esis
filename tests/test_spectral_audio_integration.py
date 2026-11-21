@@ -80,6 +80,62 @@ class SpectralAudioIntegration(unittest.TestCase):
         finally:
             self.api.destroy(synth)
 
+    def test_phase12c_velocity_shift_is_opt_in_and_voice_local(self):
+        """Velocity changes spectral Shift only when the new control is enabled.
+        The MIDI velocity amplifier still works normally when disabled."""
+        def sound(velocity, intensity, oscillator):
+            synth = self.api.create(b".", None)
+            self.assertTrue(synth)
+            try:
+                for k, v in {"attack":1, "decay":1, "sustain":100,
+                             "cutoff":100, "resonance":0, "shape":50,
+                             "position":50, "curated_osc1":8,
+                             "curated_osc2":8, "osc1_spectral_shift":50,
+                             "osc2_spectral_shift":50, "osc1_volume":100 if oscillator==1 else 0,
+                             "osc2_volume":100 if oscillator==2 else 0,
+                             "vel_spec":intensity}.items():
+                    self.setp(synth, k, v)
+                self.render(synth, 100)
+                self.note(synth, 60, velocity)
+                return self.render(synth, 18)[3*128:]
+            finally:
+                self.api.destroy(synth)
+        for osc in (1, 2):
+            for velocity in (20, 64, 120):
+                off = sound(velocity, 0, osc)
+                default = sound(velocity, 0, osc)
+                self.assertEqual(off, default)
+                wet = sound(velocity, 100, osc)
+                delta = rms([x-y for x, y in zip(off, wet)])
+                if velocity == 64:
+                    self.assertEqual(off, wet, "center velocity must be exact neutral")
+                else:
+                    self.assertGreater(delta, 20, (osc, velocity, delta))
+            # Both ends must produce a different timbre, not just one-sided response.
+            low = sound(20, 100, osc)
+            high = sound(120, 100, osc)
+            self.assertGreater(rms(low), 20)
+            self.assertGreater(rms(high), 20)
+
+    def test_phase12c_old_preset_resets_velocity_and_new_state_roundtrips(self):
+        a = self.api.create(b".", None)
+        b = self.api.create(b".", None)
+        self.assertTrue(a and b)
+        try:
+            self.assertEqual(self.getp(a, "vel_spec"), "0")
+            self.setp(a, "vel_spec", 73)
+            state = self.getp(a, "state")
+            self.assertIn("vel_spec=73", state)
+            self.assertLess(len(state), 2048)
+            self.api.set(b, b"state", state.encode())
+            self.assertEqual(self.getp(b, "vel_spec"), "73")
+            self.api.set(b, b"state", b"curated_osc1=8,osc1_spectral_shift=50,mx0_12=50")
+            self.assertEqual(self.getp(b, "vel_spec"), "0")
+            self.assertEqual(self.getp(b, "matrix_depth"), "50")
+        finally:
+            self.api.destroy(a)
+            self.api.destroy(b)
+
     def test_phase12_spectral_routes_are_independent_and_audible(self):
         """Every added matrix route must change its own OSC and spectral
         effect under an LFO, without changing any neutral pre-Phase12 sound."""
