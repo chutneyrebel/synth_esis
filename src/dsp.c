@@ -512,11 +512,11 @@ static float curated_color_phase(float p,int curated,float mod,float age,int ban
     if(p<0.f)p+=256.f;
     return p;
 }
-static float curated_color_gain(float signal,int curated,float mod){
+static float curated_color_gain(float signal,int curated,float mod,int band){
     /* Keep gain bounded; contrasts are in temporal character, not loudness. */
     if(curated==10)return signal*(.82f+.18f*(1.f+mod)*.5f);
     if(curated==11)return signal*(.87f+.13f*(1.f+mod)*.5f);
-    if(curated==16)return signal*(.72f+.28f*(mod<0.f?-mod:mod));
+    if(curated==16)return band>=6?signal*.84f:signal*(.72f+.28f*(mod<0.f?-mod:mod));
     return signal;
 }
 static int16_t pcm(float f){
@@ -630,7 +630,7 @@ static void render_block(void *instance,int16_t *out,int frames){
                 float avg=.5f*(left+right);
                 x+=sh<0.f?(avg-x)*(-sh*.9f):(x-avg)*(sh*.85f);
             }
-            if(char1)x=curated_color_gain(x,char1,character1);
+            if(char1)x=curated_color_gain(x,char1,character1,v->band);
             x*=.01f*clampf((float)s->osc1_volume+mx[8]*50.f,0.f,100.f);if(newmode)x*=gain1*amp1;
             float p2=warp_phase(v->phase2/256.f,s->osc2_warp_type,clampf((float)s->osc2_warp+mx[5]*50.f,0.f,100.f))*256.f;
             int source2=(s->osc2_source_curated&&s->curated_osc2)?107+s->curated_osc2:s->osc2_wavetable;
@@ -640,7 +640,7 @@ static void render_block(void *instance,int16_t *out,int frames){
             float second=spectral_morph_at(source2,pos2,v->band,p2,
                 s->smooth_spectral[1][0],s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
                 (.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
-            if(char2)second=curated_color_gain(second,char2,character2);
+            if(char2)second=curated_color_gain(second,char2,character2,v->band);
             second+=lookup(1,0,v->band,v->phase2)*(.006f*s->osc2_level);if(newmode)second*=gain2*amp2;
             float pan1=.01f*clampf((float)s->osc1_pan+mx[6]*50.f,0.f,100.f),pan2=.01f*clampf((float)s->osc2_pan+mx[7]*50.f,0.f,100.f);
             float left=x*(1.f-pan1)+second*(1.f-pan2);
