@@ -166,7 +166,10 @@ const snapshotOrder=[
   'osc1_pan','osc1_volume','osc2_wavetable','osc2_position','osc2_warp_type',
   'osc2_warp','osc2_detune','osc2_pan','osc2_volume','shape','lfo_rate',
   'lfo_depth','lfo_wt_depth','cutoff','resonance','drive','filter_env_amt',
-  'lfo_filter','master_pan','filter_type','voice_activity'
+  'lfo_filter','master_pan','filter_type','voice_activity',
+  'matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate',
+  'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
+  'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble'
 ];
 function snapshot(extra={}){
   const state={wavetable:1,position:50,osc1_warp_type:0,osc1_warp:0,
@@ -174,7 +177,10 @@ function snapshot(extra={}){
     osc2_position:50,osc2_warp_type:0,osc2_warp:0,osc2_detune:50,
     osc2_pan:50,osc2_volume:0,shape:50,lfo_rate:22,lfo_depth:0,
     lfo_wt_depth:0,cutoff:78,resonance:15,drive:0,filter_env_amt:0,
-    lfo_filter:0,master_pan:50,filter_type:0,voice_activity:0,...extra};
+    lfo_filter:0,master_pan:50,filter_type:0,voice_activity:0,
+    matrix_cutoff_lfo1:50,matrix_cutoff_lfo2:50,lfo2_rate:22,
+    osc1_spectral_shift:0,osc1_spectral_fold:0,osc1_spectral_scramble:0,
+    osc2_spectral_shift:0,osc2_spectral_fold:0,osc2_spectral_scramble:0,...extra};
   return snapshotOrder.map(k=>state[k]).join(',');
 }
 function nativeLines(face,extra={},nowMs=1000){
@@ -205,6 +211,27 @@ assert.notEqual(nativeLines('osc1',{lfo_depth:90,voice_activity:1},1000),
   'active native oscillator must animate');
 assert.notEqual(nativeLines('filter',{cutoff:15}),nativeLines('filter',{cutoff:85}),
   'filter graphic must track cutoff');
+// New curated bank must appear on both animated native oscillator faces,
+ // and each spectral control must change the illustrated harmonic envelope.
+ for(const face of ['osc1','osc2']){
+   const idKey=face==='osc1'?'wavetable':'osc2_wavetable';
+   const posKey=face==='osc1'?'position':'osc2_position';
+   const foldKey=face==='osc1'?'osc1_spectral_fold':'osc2_spectral_fold';
+   const shiftKey=face==='osc1'?'osc1_spectral_shift':'osc2_spectral_shift';
+   assert.notEqual(nativeLines(face,{[idKey]:115,[posKey]:0}),
+                   nativeLines(face,{[idKey]:115,[posKey]:100}),
+                   face+' curated ID 8 position must change the native waveform');
+   assert.notEqual(nativeLines(face,{[idKey]:115,[foldKey]:0}),
+                   nativeLines(face,{[idKey]:115,[foldKey]:100}),
+                   face+' Fold must change its visual waveform');
+   assert.notEqual(nativeLines(face,{[idKey]:115,[shiftKey]:0}),
+                   nativeLines(face,{[idKey]:115,[shiftKey]:100}),
+                   face+' Shift must change its visual waveform');
+   assert.notEqual(nativeLines(face,{[idKey]:115}),
+                   nativeLines(face,{[idKey]:116}),
+                   face+' curated wavetable selection must update the waveform');
+ }
+ console.log('PASS: new curated sources, spectral axes and WT position drive both oscillator faces');
 console.log('PASS: OSC1, OSC2, MAIN and FILTER native face snapshots, warp and motion');
 
 assert.notEqual(nativeLines('filter',{filter_type:0}),nativeLines('filter',{filter_type:1}),'Filter FACE must change with mode');
