@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y clang lld binutils python3 gcc
+      - name: Verify canonical Schwung metadata and readable labels
+        run: python3 scripts/pack_metadata.py --check && python3 scripts/generate_metadata.py --check
       - name: Generate independent wavetable data
         run: python3 scripts/generate_tables.py
       - name: Run desktop ABI and audio tests
