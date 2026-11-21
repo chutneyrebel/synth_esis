@@ -371,23 +371,30 @@ static float warp_phase(float p,int mode,float amount){
  * historical patches or expose new IDs before UI/preset migration tests. */
 #ifdef SYNTH_ESIS_ENABLE_CURATED
 #include "curated_tables.h"
+#include "noncurated_spectral_tables.h"
 static float curated_table_at(int index,int frame,int band,float phase){
     int i=(int)phase & 255;
     float frac=phase-(float)((int)phase);
     const float *row=synth_esis_curated_tables[index][frame][band];
     return row[i]+(row[(i+1)&255]-row[i])*frac;
 }
-/* Precomputed spectral lookup. No FFT or allocation in the audio callback.
- * The bank is currently staged for the forthcoming per-oscillator controls. */
+/* 0..107: fixed-point offline spectral corners of the original bank.
+ * 108..123: curated floating-point corners. Every oscillator source therefore
+ * responds to Shift, Fold and Scramble, with no FFT/locks/allocations in DSP.
+ * Historical zero-depth playback bypasses this function bit-for-bit. */
 static float spectral_table_at(int mode,int index,int frame,int band,float phase){
-    if(mode<0 || mode>=SYNTH_ESIS_SPECTRAL_MODES || index<0 || index>=SYNTH_ESIS_CURATED_COUNT)
+    if(mode<0 || mode>=SYNTH_ESIS_SPECTRAL_MODES || index<0 || index>=124)
         return 0.f;
     if(frame<0 || frame>=SYNTH_ESIS_CURATED_FRAMES || band<0 || band>=SYNTH_ESIS_CURATED_BANDS)
         return 0.f;
     int i=(int)phase & 255;
     float frac=phase-(float)((int)phase);
-    const float *row=synth_esis_spectral_tables[mode][index][frame][band];
-    return row[i]+(row[(i+1)&255]-row[i])*frac;
+    if(index>=108){
+        const float *row=synth_esis_spectral_tables[mode][index-108][frame][band];
+        return row[i]+(row[(i+1)&255]-row[i])*frac;
+    }
+    const int16_t *row=synth_esis_noncurated_spectral_tables[mode][index][frame][band];
+    return ((float)row[i]+((float)row[(i+1)&255]-(float)row[i])*frac)*(1.f/32767.f);
 }
 #endif
 static float table_at(int table,float position,int band,float phase){
@@ -423,7 +430,7 @@ static float spectral_morph_at(int index,float position,int band,float phase,
                                float shift,float fold,float scramble){
     float a=clampf(shift,0.f,1.f),b=clampf(fold,0.f,1.f),c=clampf(scramble,0.f,1.f);
     float total=a+b+c;
-    float original=table_at(108+index,position,band,phase);
+    float original=table_at(index,position,band,phase);
     if(total<=0.f)return original;
     float pos=clampf(position,0.f,3.f);
     int p0=(int)pos,p1=p0<3?p0+1:3;
@@ -445,7 +452,7 @@ static float spectral_morph_at(int index,float position,int band,float phase,
 static float spectral_morph_at(int index,float position,int band,float phase,
                                float shift,float fold,float scramble){
     (void)shift;(void)fold;(void)scramble;
-    return table_at(108+index,position,band,phase);
+    return table_at(index,position,band,phase);
 }
 #endif
 static int16_t pcm(float f){
@@ -536,27 +543,32 @@ static void render_block(void *instance,int16_t *out,int frames){
             float table=clampf(s->smooth_table,0.f,107.f);
             int t0=(int)table,t1=t0<107?t0+1:107;float tm=table-(float)t0;
             float p1=warp_phase(v->phase/256.f,s->osc1_warp_type,clampf((float)s->osc1_warp+mx[4]*50.f,0.f,100.f))*256.f;
-            float x=s->curated_osc1?spectral_morph_at(s->curated_osc1-1,pos,v->band,p1,
-                s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]):table_at(t0,pos,v->band,p1);
-            if(!s->curated_osc1 && tm>.00001f)x+=(table_at(t1,pos,v->band,p1)-x)*tm;
+            /* Spectral processing applies equally to curated and legacy sources. */
+            int source1=s->curated_osc1?107+s->curated_osc1:t0;
+            float x=spectral_morph_at(source1,pos,v->band,p1,
+                s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+            if(!s->curated_osc1 && tm>.00001f)
+                x+=(spectral_morph_at(t1,pos,v->band,p1,
+                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2])-x)*tm;
             float sh=clampf((s->smooth_shape-50.f)/50.f,-1.f,1.f);
             if(sh!=0.f){
                 float ph1=p1+8.f,ph2=p1-8.f;
                 if(ph1>=256.f)ph1-=256.f;if(ph2<0.f)ph2+=256.f;
                 int shape_table=s->curated_osc1?107+s->curated_osc1:t0;
                 /* Shape samples the same spectral signal as the main oscillator. */
-                float left=s->curated_osc1?spectral_morph_at(s->curated_osc1-1,pos,v->band,ph1,
-                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]):table_at(shape_table,pos,v->band,ph1);
-                float right=s->curated_osc1?spectral_morph_at(s->curated_osc1-1,pos,v->band,ph2,
-                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]):table_at(shape_table,pos,v->band,ph2);
+                float left=spectral_morph_at(shape_table,pos,v->band,ph1,
+                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                float right=spectral_morph_at(shape_table,pos,v->band,ph2,
+                    s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
                 float avg=.5f*(left+right);
                 x+=sh<0.f?(avg-x)*(-sh*.9f):(x-avg)*(sh*.85f);
             }
             x*=.01f*clampf((float)s->osc1_volume+mx[8]*50.f,0.f,100.f);if(newmode)x*=gain1*amp1;
             float p2=warp_phase(v->phase2/256.f,s->osc2_warp_type,clampf((float)s->osc2_warp+mx[5]*50.f,0.f,100.f))*256.f;
-            float second=(s->curated_osc2?spectral_morph_at(s->curated_osc2-1,pos2,v->band,p2,
-                s->smooth_spectral[1][0],s->smooth_spectral[1][1],s->smooth_spectral[1][2]):
-                table_at(s->osc2_wavetable,pos2,v->band,p2))*(.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
+            int source2=s->curated_osc2?107+s->curated_osc2:s->osc2_wavetable;
+            float second=spectral_morph_at(source2,pos2,v->band,p2,
+                s->smooth_spectral[1][0],s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
+                (.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
             second+=lookup(1,0,v->band,v->phase2)*(.006f*s->osc2_level);if(newmode)second*=gain2*amp2;
             float pan1=.01f*clampf((float)s->osc1_pan+mx[6]*50.f,0.f,100.f),pan2=.01f*clampf((float)s->osc2_pan+mx[7]*50.f,0.f,100.f);
             float left=x*(1.f-pan1)+second*(1.f-pan2);
