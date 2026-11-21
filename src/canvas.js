@@ -438,8 +438,30 @@
         }
         pageMeters(ctx,[['R',value(v,'lfo_rate',22)],['D',value(v,'lfo_depth',0)],['F',value(v,'lfo_filter',0)],['P',value(v,'master_pan',50)]],H,W);
       }else{
-        const prefix=which==='osc2'?'osc2_':'osc1_';
-        pageMeters(ctx,[['W',value(v,prefix+'warp',0)],['T',value(v,which==='osc2'?'osc2_position':'position',50)],['P',value(v,prefix+'pan',50)],['V',value(v,prefix+'volume',which==='osc2'?0:100)]],H,W);
+        const is2=which==='osc2',prefix=is2?'osc2_':'osc1_';
+        const onSpectralPage=Array.isArray(o&&o.keys) &&
+          o.keys.indexOf(prefix+'spectral_shift')>=0;
+        if(onSpectralPage){
+          /* The same graph lives on the spectral page with its own knobs.
+           * Meter labels display the three *actual* spectral depths. */
+          pageMeters(ctx,[['S',value(v,prefix+'spectral_shift',0)],
+            ['F',value(v,prefix+'spectral_fold',0)],
+            ['X',value(v,prefix+'spectral_scramble',0)],
+            ['T',value(v,is2?'osc2_position':'position',50)]],H,W);
+        }else{
+          pageMeters(ctx,[['W',value(v,prefix+'warp',0)],
+            ['T',value(v,is2?'osc2_position':'position',50)],
+            ['P',value(v,prefix+'pan',50)],
+            ['V',value(v,prefix+'volume',is2?0:100)]],H,W);
+        }
+        /* Explicit active-source diagnostic. The previous previews looked
+         * almost identical and a failing snapshot could go unnoticed. */
+        const activeId=activeSourceId(v,is2);
+        const sourceLabel=activeId>=108
+          ?'C'+String(activeId-107).padStart(2,'0')
+          :'W'+String(activeId).padStart(3,'0');
+        ctx.fillRect(W-28,1,28,7,0);
+        ctx.print(W-27,1,sourceLabel,1);
       }
     }
   }
