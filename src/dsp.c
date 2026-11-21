@@ -174,7 +174,18 @@ static const Param params[]={
 };
 #define NP ((int)(sizeof(params)/sizeof(params[0])))
 static int *param_ptr(Synth *s,int i){return (int*)((char*)s+params[i].offset);}
-static void set_one(Synth *s,const char *key,const char *value){
+static void set_one(Synth *s,const char *key,const char *value,int loading_state){
+    /* Direct legacy WT edits deactivate curated overrides; state recall does not. */
+    if(eq(key,"wavetable")){
+        s->wavetable=clampi(integer(value),0,107);
+        if(!loading_state)s->curated_osc1=0;
+        return;
+    }
+    if(eq(key,"osc2_wavetable")){
+        s->osc2_wavetable=clampi(integer(value),0,107);
+        if(!loading_state)s->curated_osc2=0;
+        return;
+    }
     if(eq(key,"matrix_source")){s->matrix_source=clampi(integer(value),0,1);return;}
     if(eq(key,"matrix_destination")){s->matrix_destination=clampi(integer(value),0,11);return;}
     if(eq(key,"matrix_depth")){s->matrix_depth[s->matrix_source][s->matrix_destination]=clampi(integer(value),0,100);return;}
@@ -215,11 +226,11 @@ static void set_param(void *instance,const char *key,const char *value){
             while(value[ix] && value[ix]!=',' && vi<22)v[vi++]=value[ix++];
             v[vi]=0;
             if(value[ix]==',')ix++;
-            set_one(s,k,v);
+            set_one(s,k,v,1);
         }
         return;
     }
-    set_one(s,key,value);
+    set_one(s,key,value,0);
 }
 /* Live DSP metadata is generated from module.json; run scripts/generate_metadata.py. */
 #include "ui_metadata.h"
@@ -244,9 +255,9 @@ static int get_param(void *instance,const char *key,char *buf,int len){
     if(eq(key,"face_snapshot")){
         /* One bounded derived read per canvas. Never persisted as a preset. */
         const int data[]={
-            s->wavetable,s->position,s->osc1_warp_type,s->osc1_warp,
+            (s->curated_osc1?107+s->curated_osc1:s->wavetable),s->position,s->osc1_warp_type,s->osc1_warp,
             s->osc1_detune,s->osc1_pan,s->osc1_volume,
-            s->osc2_wavetable,s->osc2_position,s->osc2_warp_type,
+            (s->curated_osc2?107+s->curated_osc2:s->osc2_wavetable),s->osc2_position,s->osc2_warp_type,
             s->osc2_warp,s->osc2_detune,s->osc2_pan,s->osc2_volume,
             s->shape,s->lfo_rate,s->lfo_depth,s->lfo_wt_depth,
             s->cutoff,s->resonance,s->drive,s->filter_env_amt,
@@ -265,7 +276,9 @@ static int get_param(void *instance,const char *key,char *buf,int len){
         if(at<0)return -1;
         /* Append-only read-only visual metadata: matrix cutoff routing for
            both LFOs, plus LFO2 rate. 50 is the neutral matrix depth. */
-        const int visual[]={s->matrix_depth[0][2],s->matrix_depth[1][2],s->lfo2_rate};
+        const int visual[]={s->matrix_depth[0][2],s->matrix_depth[1][2],s->lfo2_rate,
+            s->osc1_spectral_shift,s->osc1_spectral_fold,s->osc1_spectral_scramble,
+            s->osc2_spectral_shift,s->osc2_spectral_fold,s->osc2_spectral_scramble};
         for(unsigned i=0;i<sizeof(visual)/sizeof(visual[0]);i++){
             at=append(buf,len,at,",");
             at=append_int(buf,len,at,visual[i]);
