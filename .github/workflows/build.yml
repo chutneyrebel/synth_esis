@@ -17,6 +17,16 @@ jobs:
         run: python3 scripts/generate_tables.py
       - name: Run desktop ABI and audio tests
         run: python3 tests/test_plugin.py
+      - name: Render curated 8-16 C3/C4 from actual host DSP
+        run: |
+          python3 scripts/render_curated_audio_previews.py --output-dir dist/curated-audio-AB
+          test "$(find dist/curated-audio-AB -maxdepth 1 -type f -name '*.wav' | wc -l)" -eq 18
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synth_esis-curated-audio-AB
+          path: dist/curated-audio-AB/*.wav
+          if-no-files-found: error
+          retention-days: 30
       - name: Test isolated C spectral-bin prototype
         run: |
           gcc -std=c11 -O2 -Wall -Wextra -Werror tests/test_spectral_bins.c -lm -o /tmp/test_spectral_bins
