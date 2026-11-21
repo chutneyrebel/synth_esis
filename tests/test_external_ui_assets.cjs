@@ -13,7 +13,7 @@ const params=JSON.parse(fs.readFileSync(path.join(root,'src/module.json'))).capa
 const byKey=new Map(params.map(p=>[p.key,p]));
 const keys=[...ui.velocity,...ui.spectral].map(x=>x.key);
 assert.equal(new Set(keys).size,keys.length,'duplicate UI references');
-assert.deepEqual(ui.velocity.map(x=>x.key),['vel_spec','vel_f','vel_s']);
+assert.deepEqual(Array.from(ui.velocity,x=>x.key),['vel_spec','vel_f','vel_s']);
 for(const item of [...ui.velocity,...ui.spectral]){
   const declared=byKey.get(item.key);
   assert.ok(declared, 'unknown DSP control: '+item.key);
