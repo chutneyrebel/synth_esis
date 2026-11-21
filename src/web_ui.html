@@ -14,7 +14,7 @@ label{font-size:12px;color:var(--text)}output{font-variant-numeric:tabular-nums;
 input[type=range]{display:block;width:100%;margin:9px 0 0;accent-color:var(--teal);cursor:pointer}
 select{width:100%;border:1px solid var(--edge);background:var(--bg);color:var(--text);padding:8px;border-radius:6px;margin-top:8px}
 canvas{width:100%;height:93px;border:1px solid var(--edge);border-radius:8px;background:#101820}
-footer{color:var(--dim);font-size:11px;padding-top:13px;line-height:1.5}
+footer{color:var(--dim);font-size:11px;padding-top:13px;line-height:1.5}.field-help{display:block;color:var(--dim);font-size:11px;line-height:1.45;margin-top:5px}.velocity-note{color:var(--dim);font-size:11px;margin:0 0 10px}
 </style></head><body>
 <header><div><h1>SPRIG WT <small>0.2 / Move</small></h1><small>Two oscillators · scanning wavetable · analog color</small></div><span class="status" id="status">CONNECTING</span></header>
 <main>
@@ -22,9 +22,11 @@ footer{color:var(--dim);font-size:11px;padding-top:13px;line-height:1.5}
 <section><h2>02 / Filter &amp; Color</h2><div id="tone"></div></section>
 <section><h2>03 / Motion</h2><div id="motion"></div></section>
 <section><h2>04 / Amplitude</h2><div id="amp"></div></section>
+<section><h2>05 / Spectral Expression</h2><p class="velocity-note">Each note shapes its own spectral movement. Shift is sustained; Fold and Scramble have per-note attack and decay.</p><div id="velocity"></div></section>
 </main>
 <footer>Independent synth for Schwung. This is a control preview, not a live audio oscilloscope. The Move's native pages remain accessible.</footer>
 <script src="/static/schwung-remote-api.js"></script>
+<script src="assets/ui_reference.js"></script>
 <script>
 'use strict';
 const groups={
@@ -39,7 +41,8 @@ const groups={
  ['osc2_spectral_scramble','OSC 2 Spectral Scramble',0,100,1]],
  tone:[['cutoff','Cutoff',0,100,1],['resonance','Resonance',0,100,1],['drive','Drive',0,100,1],['filter_env_amt','Filter EG Amount',0,100,1],['filter_env_attack','Filter EG Attack',0,2000,1],['filter_env_decay','Filter EG Decay',0,2000,1],['level','Output',0,100,1]],
  motion:[['lfo_rate','Motion Rate',0,100,1],['lfo_depth','Motion Depth',0,100,1],['lfo_wt_depth','WT LFO Depth',0,100,1],['lfo_filter','Motion Filter',0,100,1]],
- amp:[['attack','Attack',0,2000,1],['decay','Decay',0,2000,1],['sustain','Sustain',0,100,1],['release','Release',0,2000,1]]
+ amp:[['attack','Attack',0,2000,1],['decay','Decay',0,2000,1],['sustain','Sustain',0,100,1],['release','Release',0,2000,1]],
+ velocity:((window.synthEsisUi&&window.synthEsisUi.velocity)||[]).map(p=>[p.key,p.label,0,100,1])
 };
 const octaveNames=['−2','−1','0','+1','+2'];
 const warpNames=['Off','Sync','Bend+','Bend−','PWM','Asym','Mirror','Quant'];
@@ -81,7 +84,11 @@ function control(key,name,min,max,step){
  input.setAttribute('aria-label',name);
  const change=()=>{val.textContent=key==='curated_osc1'||key==='curated_osc2'?curatedBankNames[+input.value]:octaveType?octaveNames[+input.value]:warpType?warpNames[+input.value]:key==='wave'?waveNames[+input.value]:key==='wt_bank'?bankNames[+input.value]:input.value;setParam(key,input.value);if(categoryPickers[key])categoryPickers[key].value=(curatedIds.has(Number(input.value))?String(input.value):'legacy');if(['wavetable','osc2_wavetable','position','shape'].includes(key))drawWave()};
  input.addEventListener('input',change);input.addEventListener('change',change);
- root.append(input);fields[key]={input,val};return root;
+ root.append(input);
+ const reference=window.synthEsisUi;
+ const help=reference&&[...reference.velocity,...reference.spectral].find(entry=>entry.key===key);
+ if(help){const note=document.createElement('small');note.className='field-help';note.textContent=help.help;root.append(note)}
+ fields[key]={input,val};return root;
 }
 Object.keys(groups).forEach(group=>{const parent=document.getElementById(group);groups[group].forEach(p=>parent.append(control(...p)))})
 for(const key of ['wavetable','osc2_wavetable']){
