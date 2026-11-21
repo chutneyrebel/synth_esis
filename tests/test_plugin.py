@@ -158,7 +158,7 @@ expected_faces=[('face','sprig_main','root'),('face_osc1','sprig_osc1','osc1'),(
 for key,overlay,home in expected_faces:
     entry=next(p for p in meta['capabilities']['chain_params'] if p['key']==key)
     assert entry['type']=='canvas' and entry.get('as_page') is True
-    assert entry['canvas_script']=='canvas.js' and entry.get('canvas_overlay')==overlay
+    assert entry.get('canvas_script','canvas.js')=='canvas.js' and entry.get('canvas_overlay')==overlay
     # Page ordering is defined by the root hierarchy; page_first is optional.
     assert len(entry.get('extra_keys',[]))<=4
     slots=meta['capabilities']['ui_hierarchy']['levels'][home]['params']
@@ -166,6 +166,11 @@ for key,overlay,home in expected_faces:
     assert len(meta['capabilities']['ui_hierarchy']['levels'][home]['knobs'])<=8
 for key in ('face_osc1','face_osc2','face_filter'):
     assert key not in meta['capabilities']['ui_hierarchy']['levels']['root']['params']
+assert meta['capabilities']['ui_hierarchy']['levels']['osc1_spectral']['params']==['face_osc1']
+assert meta['capabilities']['ui_hierarchy']['levels']['osc2_spectral']['params']==['face_osc2']
+for osc in (1,2):
+    cp=next(p for p in meta['capabilities']['chain_params'] if p['key']==f'face_osc{osc}')
+    assert cp['extra_keys']==['face_snapshot','voice_activity',f'curated_osc{osc}']
 assert len(set(p['key'] for p in meta['capabilities']['chain_params']))==len(meta['capabilities']['chain_params']), 'Duplicate chain parameter keys'
 print('PASS: four native canvas pages each have a dedicated Schwung encoder level')
 assert 'lfo_wt_depth' in meta['capabilities']['chain_params'][[p['key'] for p in meta['capabilities']['chain_params']].index('lfo_wt_depth')]['key']
