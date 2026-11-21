@@ -268,6 +268,32 @@ for(const face of ['osc1','osc2']){
                face+' must remain still when voices are inactive');
 }
 console.log('PASS: live curated encoder beats delayed snapshot and note-gated OSC1/OSC2 animation');
+// Wavetable 0..107 is a fully active spectral DSP source. Its visual must
+// also respond to the three spectral controls on BOTH OSC spectral pages.
+for(const face of ['osc1','osc2']){
+  const is2=face==='osc2', key=is2?'osc2_wavetable':'wavetable';
+  const curated=is2?'curated_osc2':'curated_osc1';
+  const mode=is2?'osc2_source_curated':'osc1_source_curated';
+  const effects=['shift','fold','scramble'];
+  const base={[key]:30,[curated]:0,[mode]:0};
+  const neutral=nativeLines(face,base);
+  for(const effect of effects){
+    const wet=nativeLines(face,{...base,['osc'+(is2?2:1)+'_spectral_'+effect]:100});
+    assert.notEqual(neutral,wet,face+' Wavetable 30 '+effect+' must change the visible trace');
+  }
+  const muted=nativeLines(face,{...base,voice_activity:0},1200);
+  const held=nativeLines(face,{...base,voice_activity:1},1200);
+  assert.notEqual(muted,held,face+' must show an active-note trace');
+  assert.notEqual(nativeLines(face,{...base,voice_activity:1},1200),
+                  nativeLines(face,{...base,voice_activity:1},1750),
+                  face+' held legacy wavetable must visibly animate');
+  const snap={...base,voice_activity:0};
+  const live=liveFaceLines(face,snap,{voice_activity:1});
+  assert.notEqual(live,nativeLines(face,snap),
+                  face+' direct voice-activity read must override older snapshot');
+}
+console.log('PASS: both OSC spectral canvases animate legacy WT with Shift, Fold, Scramble and live note activity');
+
 
 console.log('PASS: OSC1, OSC2, MAIN and FILTER native face snapshots, warp and motion');
 
