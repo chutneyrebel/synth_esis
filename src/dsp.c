@@ -294,7 +294,10 @@ static int get_param(void *instance,const char *key,char *buf,int len){
            both LFOs, plus LFO2 rate. 50 is the neutral matrix depth. */
         const int visual[]={s->matrix_depth[0][2],s->matrix_depth[1][2],s->lfo2_rate,
             s->osc1_spectral_shift,s->osc1_spectral_fold,s->osc1_spectral_scramble,
-            s->osc2_spectral_shift,s->osc2_spectral_fold,s->osc2_spectral_scramble};
+            s->osc2_spectral_shift,s->osc2_spectral_fold,s->osc2_spectral_scramble,
+            s->curated_osc1,s->curated_osc2,
+            s->osc1_source_curated,s->osc2_source_curated,
+            s->wavetable,s->osc2_wavetable};
         for(unsigned i=0;i<sizeof(visual)/sizeof(visual[0]);i++){
             at=append(buf,len,at,",");
             at=append_int(buf,len,at,visual[i]);
