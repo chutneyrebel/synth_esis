@@ -20,7 +20,7 @@ with tarfile.open(archive,'r:gz') as tar:
         assert member.isfile() or member.isdir(),member.name
     # Verify that the distributable contains exactly the intended runtime files,
     # and that every nonbinary asset matches the tested source byte-for-byte.
-    expected={'dsp.so','module.json','web_ui.html','canvas.js','wavetable_catalog.json'}
+    expected={'dsp.so','module.json','web_ui.html','canvas.js','wavetable_catalog.json','assets/ui_reference.js'}
     actual={m.name.removeprefix('synth_esis/') for m in tar.getmembers() if m.isfile()}
     assert actual==expected,('unexpected or missing runtime assets',actual^expected)
     for asset in expected-{'dsp.so'}:
