@@ -20,6 +20,7 @@ if not (ROOT/'src/expanded_tables.h').is_file():
 if not (ROOT/'src/tables.h').is_file():
     subprocess.run(['python3',str(ROOT/'scripts/generate_tables.py')],check=True)
 subprocess.run(['python3',str(ROOT/'scripts/generate_curated_header.py'),'--output',str(BUILD/'curated_tables.h')],check=True)
+subprocess.run(['python3',str(ROOT/'scripts/generate_noncurated_spectral.py'),'--output',str(BUILD/'noncurated_spectral_tables.h')],check=True)
 so = BUILD / 'dsp-host.so'
 subprocess.run(['gcc', '-std=c11', '-O2', '-shared', '-fPIC', '-ffreestanding', '-fno-builtin',
                 '-fvisibility=hidden', '-DSYNTH_ESIS_ENABLE_CURATED', '-I'+str(BUILD), str(ROOT/'src/dsp.c'), '-o', str(so)],check=True)
