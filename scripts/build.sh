@@ -26,5 +26,6 @@ fi
 rm -rf dist/synth_esis
 mkdir -p dist/synth_esis
 cp build/dsp.so src/module.json src/web_ui.html src/canvas.js src/wavetable_catalog.json dist/synth_esis/
+cp -R src/assets dist/synth_esis/assets
 tar -C dist -czf dist/synth_esis-module.tar.gz synth_esis
 printf 'Built: %s\n' "$(realpath dist/synth_esis-module.tar.gz)"
