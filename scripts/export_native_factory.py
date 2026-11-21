@@ -11,7 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from preset_schema import validate_patch
+from preset_schema import migrate_legacy_patch
 
 ROOT = Path(__file__).resolve().parents[1]
 CREATE = C.CFUNCTYPE(C.c_void_p, C.c_char_p, C.c_char_p)
@@ -35,8 +35,8 @@ def export_factory(output_dir):
         raise ValueError("unexpected factory catalog")
     entries = []
     for item in catalog["presets"]:
-        validate_patch(item["patch"])
-        entries.append(item)
+        upgraded = migrate_legacy_patch(item["patch"])
+        entries.append({**item, "patch": upgraded})
     names = [x["patch"]["name"] for x in entries]
     if len(set(names)) != len(names):
         raise ValueError("duplicate factory names")
