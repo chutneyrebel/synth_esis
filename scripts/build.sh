@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p build dist
+python3 scripts/pack_metadata.py --check
 python3 scripts/generate_metadata.py --check
 python3 scripts/generate_tables.py
 python3 scripts/generate_expanded_tables.py
