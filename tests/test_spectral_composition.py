@@ -69,9 +69,10 @@ class ComposedSpectralTests(unittest.TestCase):
         self.assertIn("spectral_table_at(mask-1,index,p0,band,phase)", dsp)
         self.assertIn("if(total<=0.f)return original", dsp)
         self.assertNotIn('#include "spectral_bins.h"', dsp)
-        for osc in (0, 1):
-            for axis in range(3):
-                self.assertIn(f"s->smooth_spectral[{osc}][{axis}]+=.004f*", dsp)
+        self.assertIn("s->smooth_spectral[osc][axis]+=.004f*(target-s->smooth_spectral[osc][axis])",dsp)
+        self.assertIn("s->matrix_depth[0][d]-50",dsp)
+        self.assertIn("mx[12+3*osc+axis]",dsp)
+        self.assertIn("for(int src=0;src<2;src++)for(int dst=12;dst<18;dst++)",dsp)
         self.assertNotIn(".01f*s->osc1_spectral_shift", dsp)
         self.assertNotIn(".01f*s->osc2_spectral_shift", dsp)
         self.assertIn("float x=spectral_morph_at(source1,pos,v->band,p1", dsp)
