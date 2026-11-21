@@ -33,17 +33,20 @@ def compose_bins(bins, mask, ceiling, protect=PROTECTED_HARMONICS, seed=1):
         return x
     top = min(127, max(1, ceiling))
     p = min(top, max(0, protect))
-    if mask & 1:  # Shift upward by twelve harmonic bins
+    if mask & 1:  # Shift upward, respecting pitch-band ceiling
         y = [v if not p < k <= top else 0j for k, v in enumerate(x)]
+        distance = min(12, max(1, (top - p) // 3))
         for k in range(p + 1, top + 1):
-            if k + 12 <= top:
-                y[k + 12] += x[k]
+            if k + distance <= top:
+                y[k + distance] += x[k]
         x = y
-    if mask & 2 and top > p + 1:  # Fold into upper half of protected range
-        pivot = (p + top) // 2
+    if mask & 2 and top > p + 1:  # Triangular fold through audible mid harmonics
+        span = max(1, min(8, (top - p) // 2))
+        period = 2 * span
         y = [v if not p < k <= top else 0j for k, v in enumerate(x)]
         for k in range(p + 1, top + 1):
-            target = k if k <= pivot else max(p + 1, 2 * pivot - k)
+            offset = (k - p - 1) % period
+            target = p + 1 + (offset if offset <= span else period - offset)
             y[target] += x[k]
         x = y
     if mask & 4 and top > p + 1:  # Deterministic complex-bin permutation
