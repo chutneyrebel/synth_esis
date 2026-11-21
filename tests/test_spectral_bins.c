@@ -20,10 +20,10 @@ int main(void){
     clear(x);x[10].re=1;
     se_spectral_apply(x,1,0,0,42,127,3);
     assert(near(x[10].re,0)&&near(x[22].re,1));
-    /* Fold reflects harmonic 100 about pivot 65 to bin 30. */
+    /* Audible triangular Fold maps the upper harmonic 100 to bin 4. */
     clear(x);x[100].re=1;
     se_spectral_apply(x,0,1,0,42,127,3);
-    assert(near(x[100].re,0)&&near(x[30].re,1));
+    assert(near(x[100].re,0)&&near(x[4].re,1));
     /* Same seed => identical spectrum, different seed => different mapping. */
     clear(x);for(int k=4;k<128;k++)x[k].re=(float)k;
     memcpy(a,x,sizeof(x));memcpy(b,x,sizeof(x));
