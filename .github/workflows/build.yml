@@ -1,7 +1,7 @@
 name: Synth_esis (Schwung ARM64)
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'development-phase12-*']
   pull_request:
   workflow_dispatch:
 jobs:
