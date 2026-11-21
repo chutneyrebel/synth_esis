@@ -223,13 +223,19 @@ class SpectralAudioIntegration(unittest.TestCase):
                 self.setp(synth, curated,8)
                 self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),115)
                 self.setp(synth,legacy,27)
-                self.assertEqual(self.getp(synth,curated),"0")
+                # The active bank switches to Wavetable, but the curated
+                # index is remembered rather than being wiped to zero.
+                self.assertEqual(self.getp(synth,curated),"8")
+                self.assertEqual(self.getp(synth,f"osc{oscillator}_source_curated"),"0")
                 self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),27)
-                self.setp(synth,curated,8)
                 state=self.getp(synth,"state")
                 self.api.set(synth,b"state",state.encode())
                 self.assertEqual(self.getp(synth,curated),"8")
-                self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),115)
+                self.assertEqual(self.getp(synth,f"osc{oscillator}_source_curated"),"0")
+                self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),27)
+                self.setp(synth,curated,9)
+                self.assertEqual(self.getp(synth,f"osc{oscillator}_source_curated"),"1")
+                self.assertEqual(int(self.getp(synth,"face_snapshot").split(",")[snapshot_idx]),116)
         finally:
             self.api.destroy(synth)
 
