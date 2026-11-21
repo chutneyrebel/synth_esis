@@ -148,7 +148,8 @@ assert len((ROOT/'src/module.json').read_bytes())<8192, 'module.json must fit Sc
 assert len(meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'])==8
 assert meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'][:2]==['lfo_rate','lfo_depth'], 'Main controls must prioritize motion'
 assert all(k in meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'] for k in ('lfo_filter','cutoff','resonance','master_pan','level')), 'Synth Face missing live performance controls'
-assert meta['capabilities']['ui_hierarchy']['levels']['osc1']['params'][:3]==['face_osc1','wavetable','curated_osc1']
+assert meta['capabilities']['ui_hierarchy']['levels']['osc1']['params']==['face_osc1']
+assert meta['capabilities']['ui_hierarchy']['levels']['osc2']['params']==['face_osc2']
 assert len(meta['capabilities']['chain_params'])==82, 'Expected 76 legacy parameters plus six independent spectral controls'
 assert [p['key'] for p in meta['capabilities']['chain_params'] if p['type']=='canvas']==['face','face_osc1','face_osc2','face_filter']
 # Schwung as_page canvases inherit the *level* knobs. Each face must own its level.
@@ -185,7 +186,7 @@ face=next((p for p in chain_params if p.get('key')=='face'), None)
 assert face and face['type']=='canvas' and face['as_page'] is True and face['page_first'] is True
 assert face['canvas_script']=='canvas.js'
 assert face['extra_keys']==['face_snapshot']
-assert len(getp('face_snapshot').split(','))==29
+assert len(getp('face_snapshot').split(','))==35
 assert getp('voice_activity')=='0'
 hierarchy=json.loads(getp('ui_hierarchy'))
 assert hierarchy==meta['capabilities']['ui_hierarchy'], 'Live DSP legacy hierarchy differs from shipped metadata'
@@ -328,7 +329,7 @@ render(200)
 assert getp('voice_activity')=='0'
 # Phase 1: one read-only snapshot provides twenty-five live face values.
 face_data=getp('face_snapshot').split(',')
-assert len(face_data)==29 and all(item.isdigit() for item in face_data)
+assert len(face_data)==35 and all(item.isdigit() for item in face_data)
 assert int(face_data[0])==int(getp('wavetable'))
 assert int(face_data[7])==int(getp('osc2_wavetable'))
 assert not any(token.startswith('face_snapshot=') for token in getp('state').split(','))
