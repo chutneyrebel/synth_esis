@@ -130,6 +130,33 @@ class SpectralAudioIntegration(unittest.TestCase):
             self.api.destroy(synth)
 
 
+    def test_curated_9_to_16_have_distinct_character_on_both_oscillators(self):
+        # A changed wavetable index is not enough: output should not merely
+        # reproduce the previous Metallic carrier at the same pitch.
+        for osc in (1, 2):
+            patch={"osc1_volume":100 if osc==1 else 0,
+                   "osc2_volume":100 if osc==2 else 0,
+                   "position":50,"osc2_position":50,
+                   "cutoff":80, "resonance":0, "drive":0}
+            metal=self.patch_audio({**patch,f"curated_osc{osc}":8},note=60)
+            for index in range(9,17):
+                other=self.patch_audio({**patch,f"curated_osc{osc}":index},note=60)
+                diff=rms([a-b for a,b in zip(metal,other)])
+                self.assertGreater(diff,max(80,.2*rms(metal)),
+                    ("Curated indistinguishable from Metallic",osc,index,diff))
+                self.assertGreater(rms(other),50,("curated sound silent",osc,index))
+
+    def test_curated_color_is_independent_of_muted_oscillator(self):
+        for solo in (1,2):
+            change={"osc1_volume":100 if solo==1 else 0,
+                    "osc2_volume":100 if solo==2 else 0,
+                    f"curated_osc{solo}":13,
+                    f"curated_osc{3-solo}":8}
+            original=self.patch_audio(change)
+            changed=self.patch_audio({**change,f"curated_osc{3-solo}":16})
+            self.assertEqual(original,changed,
+                "Curated color on a muted oscillator must not leak into audible sound")
+
     def test_eight_voice_dual_oscillator_rapid_depth_sweeps(self):
         synth = self.api.create(b".", None)
         self.assertTrue(synth)
