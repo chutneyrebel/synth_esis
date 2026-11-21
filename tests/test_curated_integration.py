@@ -21,11 +21,14 @@ class CuratedIntegrationTests(unittest.TestCase):
         self.assertEqual(by_key["wavetable"]["max"],107)
         self.assertEqual(by_key["osc2_wavetable"]["max"],107)
         self.assertEqual(by_key["wt_bank"]["options"],["Legacy","Expanded"])
-        self.assertEqual(by_key["curated_osc1"]["default"],0)
-        self.assertEqual(by_key["curated_osc2"]["default"],0)
+        self.assertEqual(by_key["curated_osc1"].get("default",0),0)
+        self.assertEqual(by_key["curated_osc2"].get("default",0),0)
         self.assertEqual(by_key["curated_osc1"]["max"],16)
         self.assertEqual(by_key["curated_osc2"]["max"],16)
+        # The descriptor may omit a zero default to meet Schwung's hard
+        # metadata limit; DSP defaults() is authoritative for both slots.
         dsp=(ROOT/"src/dsp.c").read_text()
+        self.assertIn("wipe(s,sizeof(*s));",dsp)
         self.assertIn("int source1=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0",dsp)
         self.assertIn("float original=table_at(index,position,band,phase)",dsp)
         self.assertIn("if(total<=0.f)return original",dsp)

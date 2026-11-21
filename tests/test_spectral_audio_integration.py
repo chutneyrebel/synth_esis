@@ -80,6 +80,70 @@ class SpectralAudioIntegration(unittest.TestCase):
         finally:
             self.api.destroy(synth)
 
+    def test_phase12d_fold_scramble_envelope_decays_per_note(self):
+        """With Shift pinned at its upper bound, audible changes must come
+        from Fold/Scramble, and the transient should decay after note-on."""
+        def capture(velocity, amount, oscillator):
+            synth = self.api.create(b".", None)
+            self.assertTrue(synth)
+            try:
+                settings = {"attack":1, "decay":1, "sustain":100,
+                            "cutoff":100, "resonance":0, "shape":50,
+                            "curated_osc1":8, "curated_osc2":8,
+                            "osc1_spectral_shift":100, "osc2_spectral_shift":100,
+                            "osc1_spectral_fold":40, "osc2_spectral_fold":40,
+                            "osc1_spectral_scramble":40, "osc2_spectral_scramble":40,
+                            "osc1_volume":100 if oscillator==1 else 0,
+                            "osc2_volume":100 if oscillator==2 else 0,
+                            "vel_spec":amount}
+                for k, v in settings.items():
+                    self.setp(synth,k,v)
+                self.render(synth,100)
+                self.note(synth,60,velocity)
+                return self.render(synth,440)
+            finally:
+                self.api.destroy(synth)
+        for osc in (1,2):
+            dry = capture(120,0,osc)
+            wet = capture(120,100,osc)
+            # At 120, Shift is saturated at 100% in both. The difference
+            # is therefore caused by newly articulated Fold/Scramble.
+            early = rms([a-b for a,b in zip(dry[1024:8192],wet[1024:8192])])
+            late = rms([a-b for a,b in zip(dry[-8192:],wet[-8192:])])
+            self.assertGreater(early,15,("no articulated spectral transient",osc,early))
+            self.assertGreater(early,late*1.6,("articulation did not decay",osc,early,late))
+            neutral = capture(64,100,osc)
+            baseline = capture(64,0,osc)
+            self.assertEqual(neutral,baseline,"velocity 64 must bypass articulation exactly")
+
+    def test_phase12d_polyphonic_notes_keep_independent_spectral_envelopes(self):
+        """Two notes triggered at different times must not restart each
+        other's spectral articulation state."""
+        def run(second_note):
+            synth=self.api.create(b".",None)
+            self.assertTrue(synth)
+            try:
+                for k,v in {"attack":1,"decay":1,"sustain":100,"cutoff":100,
+                            "resonance":0,"shape":50,"curated_osc1":8,
+                            "osc1_volume":100,"osc2_volume":0,
+                            "osc1_spectral_shift":100,"osc1_spectral_fold":45,
+                            "osc1_spectral_scramble":45,"vel_spec":100}.items():
+                    self.setp(synth,k,v)
+                self.render(synth,100)
+                self.note(synth,60,64)
+                self.render(synth,120)
+                if second_note:
+                    self.note(synth,67,120)
+                return self.render(synth,40)
+            finally:
+                self.api.destroy(synth)
+        first_only=run(False)
+        two_notes=run(True)
+        difference=rms([a-b for a,b in zip(first_only,two_notes)])
+        self.assertGreater(difference,20,"late added note must be audible")
+        self.assertGreater(rms(first_only),20)
+        self.assertGreater(rms(two_notes),20)
+
     def test_phase12c_velocity_shift_is_opt_in_and_voice_local(self):
         """Velocity changes spectral Shift only when the new control is enabled.
         The MIDI velocity amplifier still works normally when disabled."""

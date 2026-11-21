@@ -32,6 +32,7 @@ typedef struct plugin_api_v2 {
 typedef struct {
     float phase, phase2, increment, env, vel, release_step;
     float character_phase[2], character_age; /* independent per-oscillator timbre clocks */
+    float spectral_artic; uint8_t spectral_artic_stage; /* per-note articulation */
     float ic1, ic2, ic1_r, ic2_r, ic3, ic4, ic3_r, ic4_r, filter_env, smooth_cut;
     float oe[2],ors[2];uint8_t os[2];uint8_t filter_stage;
     unsigned age;
@@ -137,6 +138,7 @@ static void note_on(Synth *s,unsigned note,unsigned vel){
     Voice *v=&s->voices[chosen];wipe(v,sizeof(*v));
     v->note=note;v->band=sprig_note_band[note];v->increment=sprig_note_phase_inc[note];
     v->vel=(float)vel/127.0f;v->stage=ATTACK;v->down=1;v->age=++s->age;
+    v->spectral_artic=0.f;v->spectral_artic_stage=1;
     v->filter_stage=1;v->smooth_cut=(float)s->cutoff;v->os[0]=v->os[1]=ATTACK;
 }
 static void note_off(Synth *s,unsigned note){
@@ -630,6 +632,23 @@ static void render_block(void *instance,int16_t *out,int frames){
             float vel_delta=(v->vel*127.f-64.f)*(1.f/63.f)*(.0035f*(float)s->vel_spec);
             float shift1=clampf(s->smooth_spectral[0][0]+vel_delta,0.f,1.f);
             float shift2=clampf(s->smooth_spectral[1][0]+vel_delta,0.f,1.f);
+            /* Phase 12D: independent note-on timbre contour. About 12 ms
+             * linear attack then a 420 ms exponential-like decay. No clock,
+             * memory allocation, audio-side preset data or new matrix routes.
+             * A 0 vel_spec bypasses Fold/Scramble entirely (12C parity). */
+            if(v->spectral_artic_stage==1){
+                v->spectral_artic+=1.f/(.012f*SR);
+                if(v->spectral_artic>=1.f){v->spectral_artic=1.f;v->spectral_artic_stage=2;}
+            }else if(v->spectral_artic_stage==2){
+                v->spectral_artic*=1.f-1.f/(.42f*SR);
+                if(v->spectral_artic<.0001f){v->spectral_artic=0.f;v->spectral_artic_stage=0;}
+            }
+            float fold_delta=vel_delta*v->spectral_artic;
+            float scram_delta=.65f*fold_delta;
+            float fold1=clampf(s->smooth_spectral[0][1]+fold_delta,0.f,1.f);
+            float scram1=clampf(s->smooth_spectral[0][2]+scram_delta,0.f,1.f);
+            float fold2=clampf(s->smooth_spectral[1][1]+fold_delta,0.f,1.f);
+            float scram2=clampf(s->smooth_spectral[1][2]+scram_delta,0.f,1.f);
             float env=env_next(s,v),amp1=osc_amp(s,v,0),amp2=osc_amp(s,v,1);if(!v->stage&&amp1<=0.f&&amp2<=0.f)continue;if(v->stage==RELEASE&&env<=0.f&&amp1<=0.f&&amp2<=0.f){v->stage=0;continue;}int newmode=s->mix_enabled||s->osc1_env_enabled||s->osc2_env_enabled;
             float bal=.01f*s->mix_balance,gain1=s->mix_enabled?2.f*(1.f-bal):1.f,gain2=s->mix_enabled?2.f*bal:1.f;
             float table=clampf(s->smooth_table,0.f,107.f);
@@ -641,10 +660,10 @@ static void render_block(void *instance,int16_t *out,int frames){
             float character1=char1?lookup(0,0,0,v->character_phase[0]):0.f;
             if(char1)p1=curated_color_phase(p1,char1,character1,v->character_age,v->band);
             float x=spectral_morph_at(source1,pos,v->band,p1,
-                shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                shift1,fold1,scram1);
             if(!(s->osc1_source_curated&&s->curated_osc1) && tm>.00001f)
                 x+=(spectral_morph_at(t1,pos,v->band,p1,
-                    shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2])-x)*tm;
+                    shift1,fold1,scram1)-x)*tm;
             float sh=clampf((s->smooth_shape-50.f)/50.f,-1.f,1.f);
             if(sh!=0.f){
                 float ph1=p1+8.f,ph2=p1-8.f;
@@ -652,9 +671,9 @@ static void render_block(void *instance,int16_t *out,int frames){
                 int shape_table=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0;
                 /* Shape samples the same spectral signal as the main oscillator. */
                 float left=spectral_morph_at(shape_table,pos,v->band,ph1,
-                    shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                    shift1,fold1,scram1);
                 float right=spectral_morph_at(shape_table,pos,v->band,ph2,
-                    shift1,s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
+                    shift1,fold1,scram1);
                 float avg=.5f*(left+right);
                 x+=sh<0.f?(avg-x)*(-sh*.9f):(x-avg)*(sh*.85f);
             }
@@ -666,7 +685,7 @@ static void render_block(void *instance,int16_t *out,int frames){
             float character2=char2?lookup(0,0,0,v->character_phase[1]):0.f;
             if(char2)p2=curated_color_phase(p2,char2,character2,v->character_age,v->band);
             float second=spectral_morph_at(source2,pos2,v->band,p2,
-                shift2,s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
+                shift2,fold2,scram2)*
                 (.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
             if(char2)second=curated_color_gain(second,char2,character2,v->band);
             second+=lookup(1,0,v->band,v->phase2)*(.006f*s->osc2_level);if(newmode)second*=gain2*amp2;
