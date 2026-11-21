@@ -130,6 +130,36 @@ class SpectralAudioIntegration(unittest.TestCase):
             self.api.destroy(synth)
 
 
+    def test_eight_voice_inharmonic_curated_long_note(self):
+        synth=self.api.create(b".",None)
+        self.assertTrue(synth)
+        try:
+            for key,value in {"curated_osc1":13,"curated_osc2":16,
+                              "osc1_volume":50,"osc2_volume":50,
+                              "cutoff":90,"resonance":0,"drive":0,"level":40,
+                              "attack":1,"sustain":95,"release":75}.items():
+                self.setp(synth,key,value)
+            self.render(synth,60)
+            notes=(48,52,55,60,64,67,71,74)
+            for note in notes:self.note(synth,note)
+            self.assertEqual(self.getp(synth,"voice_activity"),"8")
+            energy=0
+            for tick in range(40):
+                if tick%8==0:
+                    self.setp(synth,"curated_osc1",9+(tick//8)%8)
+                    self.setp(synth,"curated_osc2",16-(tick//8)%8)
+                audio=self.render(synth,5)
+                self.assertTrue(all(-32768<=v<=32767 for v in audio))
+                energy+=sum(v*v for v in audio)
+            self.assertGreater(energy,1000000)
+            for note in notes:
+                off=(C.c_uint8*3)(0x80,note,0)
+                self.api.midi(synth,off,3,0)
+            self.render(synth,300)
+            self.assertEqual(self.getp(synth,"voice_activity"),"0")
+        finally:
+            self.api.destroy(synth)
+
     def test_curated_9_to_16_have_distinct_character_on_both_oscillators(self):
         # A changed wavetable index is not enough: output should not merely
         # reproduce the previous Metallic carrier at the same pitch.
