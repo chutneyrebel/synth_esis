@@ -10,7 +10,7 @@ from generate_shape_variants import BAND_LIMITS, N
 
 NAMES = ("Sine", "Saw", "Square", "Triangle", "Odd", "Formant",
          "Hollow", "Metallic", "Glass", "Vocal", "Organic", "Resonant",
-         "Inharmonic", "Spectral Sweep", "Fractal", "Noise-like")
+         "Bell Partials", "Spectral Sweep", "Fractal", "Noise-like")
 FRAMES = 4
 
 def _bell(h, center, width):
@@ -75,49 +75,46 @@ def harmonic_weight(table, h, frame):
                   ((11, 1.8, 1.2), (20, 1.4, 2.0), (33, 1.3, 3.0)))
         return (0.37 if h == 1 else 0.012 / (h ** 0.4)) + sum(
             a * bell(h, center, width) for center, a, width in scenes[f])
-    if table == 8:  # Glass: low bell -> struck plates -> bright split -> glass rain
-        scenes = ((6, 13, 20), (9, 16, 27), (4, 19, 33), (12, 25, 38))
+    if table == 8:  # Glass: sparse glassy partials, not another metal cluster
+        scenes = ((2, 5, 11), (3, 7, 14), (2, 9, 17), (4, 11, 23))
         a, b, c = scenes[f]
-        return (0.19 if h == 1 else 0.015 / h) + (
-            1.2 * bell(h, a, 0.9) + 1.0 * bell(h, b, 1.5) + 0.75 * bell(h, c, 2.0))
-    if table == 9:  # Vocal: shifting two-vowel formants
-        scenes = ((3, 11, 18), (5, 14, 23), (8, 20, 29), (4, 9, 34))
+        return (0.13 if h == 1 else 0.003 / h) + (
+            1.45 * bell(h, a, 0.42) + 1.0 * bell(h, b, 0.45) +
+            0.72 * bell(h, c, 0.62))
+    if table == 9:  # Vocal: continuously voiced buzz through wide, migrating vowels
+        a, b = ((2, 6), (3, 8), (4, 10), (2, 11))[f]
+        buzz = (1 if h % 2 else .62) / h ** (.63 + .09 * f)
+        return buzz * (.18 + 2.5 * bell(h, a, 1.8) +
+                       1.65 * bell(h, b, 2.9))
+    if table == 10:  # Organic: PWM / analog pulse, with audible low partials
+        duty = (.16, .28, .41, .49)[f]
+        pulse = abs(math.sin(math.pi * h * duty))
+        low = .07 + .93 * pulse
+        return low / h ** (.54 + .11 * f) + (.27 if h == 1 else 0.0)
+    if table == 11:  # Resonant: simple tonal reed with one mobile ringing partial
+        overtone = (3, 5, 8, 12)[f]
+        return (1.4 if h == 1 else 0.013 / h) + (
+            2.2 * bell(h, overtone, .58) + .35 * bell(h, overtone * 2, .85))
+    if table == 12:  # Bell Partials: thin, widely separated harmonic chimes
+        scenes = ((2, 7, 13), (3, 8, 15), (2, 10, 19), (5, 12, 23))
         a, b, c = scenes[f]
-        return (0.18 if h == 1 else 0.01 / h) + (
-            1.7 * bell(h, a, 1.0) + 1.4 * bell(h, b, 1.6) + 0.9 * bell(h, c, 2.4))
-    if table == 10:  # Organic: asymmetric bloom, dark -> open -> tense -> diffuse
-        center = (3, 8, 16, 27)[f]
-        return (0.28 if h == 1 else 0.025 / h) + (
-            1.4 * bell(h, center, 1.7 + f) +
-            0.8 * bell(h, center * 1.75, 2.3 + f) +
-            0.3 * abs(math.sin(h * (0.39 + f * 0.17))) / (h ** 0.65))
-    if table == 11:  # Resonant: sharply migrating formant whistle
-        center = (4, 9, 17, 30)[f]
-        return (0.27 if h == 1 else 0.02 / h) + (
-            2.2 * bell(h, center, 1.0 + 0.6 * f) +
-            0.7 * bell(h, center * 1.55, 2.0))
-    if table == 12:  # Bell partials: sparse non-octave *harmonic indices*
-        centers = ((2, 5, 9), (4, 11, 17), (7, 15, 26), (3, 19, 37))
-        a, b, c = centers[f]
-        return (0.18 if h == 1 else 0.005 / h) + (
-            1.3 * bell(h, a, 0.55) + 1.2 * bell(h, b, 0.75) +
-            1.2 * bell(h, c, 1.1))
-    if table == 13:  # Spectral sweep: radically migrating narrow harmonic island
-        center = (3, 9, 18, 34)[f]
-        return (0.28 if h == 1 else 0.02 / h) + (
-            2.2 * bell(h, center, 2.0 + f * 0.8) +
-            0.8 * bell(h, center * 1.6, 2.5))
-    if table == 14:  # Fractal: multiple recursively displaced clusters
-        root = (3, 6, 11, 19)[f]
-        return (0.24 if h == 1 else 0.012 / h) + (
-            1.35 * bell(h, root, 0.85) + 1.1 * bell(h, root * 2 + 1, 1.3) +
-            0.9 * bell(h, root * 3 + 2, 2.1))
-    # Noise-like: pitch-locked rough harmonic mist, not broadband noise
-    center = (5, 11, 20, 35)[f]
-    texture = (0.3 + 0.7 * abs(math.sin(h * (9.91 + f * 1.3) + table * 13.0)))
-    return (0.20 if h == 1 else 0.01 / h) + (
-        1.7 * bell(h, center, 3.5 + f * 1.2) * texture +
-        0.5 * bell(h, center * 1.5, 5.0) * texture)
+        return (0.18 if h == 1 else 0.001 / h) + (
+            1.7 * bell(h, a, .36) + 1.15 * bell(h, b, .42) +
+            1.3 * bell(h, c, .55))
+    if table == 13:  # Spectral Sweep: dense broadband saw with sweeping *notch*
+        notch = (3, 5, 8, 11)[f]
+        inverse_notch = 1.0 - .97 * bell(h, notch, 1.2 + f * .28)
+        bright = h ** (-[1.2, .82, .65, .53][f])
+        return bright * inverse_notch * (1.0 if h % 2 else .72)
+    if table == 14:  # Fractal: deliberately structured harmonic combs/organ teeth
+        spacing = (2, 3, 4, 5)[f]
+        tooth = 1.0 if (h - 1) % spacing == 0 else .025
+        secondary = .45 if (h - 2) % (spacing + 2) == 0 else 0.0
+        return (tooth + secondary) / h ** (.38 + .12 * f)
+    # Noise-like: broad, irregular phase-rich harmonic cloud (still pitched)
+    jitter = abs(math.sin(h * (9.91 + f * 1.3) + table * 13.0))
+    tilt = (.47, .35, .24, .18)[f]
+    return (.08 + .92 * jitter) / h ** tilt
 
 def generate_row(table, frame, limit):
     if not 0 <= table < len(NAMES) or not 0 <= frame < FRAMES or limit not in BAND_LIMITS:
@@ -125,7 +122,18 @@ def generate_row(table, frame, limit):
     bins = [0j] * N
     for h in range(1, limit + 1):
         weight = harmonic_weight(table, h, frame)
-        phase = (h * h * 0.037 + frame * h * 0.13) if table >= 7 else 0.0
+        # Do not give every upper curated sound the same spectral phase map.
+        # Their differences should survive even with the filter partly closed.
+        if table == 7: phase = h * h * .037 + frame * h * .13
+        elif table == 8: phase = h * h * .23 + frame * h * .31
+        elif table == 9: phase = h * .045 + frame * .08
+        elif table == 10: phase = .45 * math.sin(h * .31 + frame * .65)
+        elif table == 11: phase = .03 * h
+        elif table == 12: phase = math.pi * (h % 3 == 0) + h * h * .17
+        elif table == 13: phase = frame * .025 * h
+        elif table == 14: phase = .27 * (h % 5) + .1 * frame * h
+        elif table == 15: phase = h * h * (1.71 + frame * .13)
+        else: phase = 0.0
         coefficient = 0.5j * weight * complex(math.cos(phase), math.sin(phase))
         bins[h] = -coefficient
         bins[N-h] = coefficient.conjugate() * -1
