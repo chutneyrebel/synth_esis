@@ -33,6 +33,18 @@ const descriptor=JSON.parse(readFileSync('src/module.json','utf8'));
 const real=planPages({hierarchy:descriptor.capabilities.ui_hierarchy,
                       chainParams:descriptor.capabilities.chain_params,
                       trailingMenus:[]}).pages;
+// Phase12F: the compact root FACE reference must resolve to the same
+// canvas with the original eight hardware encoders.
+const facePages=real.filter(p=>p.canvas?.key==='face');
+assert.equal(facePages.length,1,'compact FACE alias must resolve once');
+assert.deepEqual(pageSlotKeys(facePages[0]).filter(Boolean),
+  descriptor.capabilities.ui_hierarchy.levels.root.knobs,
+  'compact FACE must retain eight original hardware encoder keys');
+// Metadata `name` is separate from stable preset/DSP `key`.
+for(const [key,name] of [['vel_spec','Vel Shift'],['vel_f','Vel Fold'],['vel_s','Vel Scram']]){
+  const entry=descriptor.capabilities.chain_params.find(p=>p.key===key);
+  assert.equal(entry?.name,name,'readable chain parameter label');
+}
 for(const osc of [1,2]){
   const face='face_osc'+osc;
   const levels=['osc'+osc,'osc'+osc+'_spectral'];
