@@ -133,18 +133,24 @@
     'shape','lfo_rate','lfo_depth','lfo_wt_depth','cutoff','resonance',
     'drive','filter_env_amt','lfo_filter','master_pan','filter_type','voice_activity','matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate',
     'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
-    'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble'
+    'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble',
+    'curated_osc1','curated_osc2','osc1_source_curated','osc2_source_curated',
+    'raw_wavetable','raw_osc2_wavetable'
   ];
   function faceValues(o){
     const initial=(o&&o.values)||{};
     if(typeof initial.face_snapshot!=='string')return {...initial};
     const parts=initial.face_snapshot.split(',');
-    if(parts.length!==snapshotKeys.length && parts.length!==29 && parts.length!==26)return initial;
+    if(parts.length!==snapshotKeys.length && parts.length!==35 &&
+       parts.length!==29 && parts.length!==26)return initial;
     const result={...initial};
     for(let i=0;i<parts.length;i++){
       const n=Number(parts[i]);
       if(!Number.isFinite(n))return initial;
-      result[snapshotKeys[i]]=n;
+      const key=snapshotKeys[i];
+      if((key==='curated_osc1'||key==='curated_osc2') && initial[key]!=null){
+        result['snapshot_'+key]=n;
+      }else result[key]=n;
     }
     return result;
   }
@@ -159,9 +165,13 @@
     const current=bounded(value(values,legacyKey,1),1,0,123)|0;
     const raw=bounded(value(values,curatedKey,0),0,0,16)|0;
     const mode=value(values,modeKey,NaN);
-    if(Number.isFinite(mode)){
-      return mode && raw?107+raw:bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',current),current,0,107)|0;
-    }
+    const snapshotSelected=value(values,'snapshot_'+curatedKey,NaN);
+    const legacy=bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',current),current,0,107)|0;
+    /* The knob has newer data than the staggered snapshot. In that short
+     * window its live selection wins. This also works when turning to 0. */
+    if(Number.isFinite(snapshotSelected) && raw!==snapshotSelected)
+      return raw?107+raw:legacy;
+    if(Number.isFinite(mode))return mode && raw?107+raw:legacy;
     /* Pre-upgrade snapshot fallback: an oscillator page with the live curated
      * key must respond to it directly, even when face_snapshot lags. */
     if(values && values[curatedKey]!=null) {
