@@ -27,7 +27,7 @@ def reference(values, shift, fold, scramble, seed, ceiling, protect):
     if not (ds or df or dc):
         return x
     if ds:
-        distance = int(12 * ds + 0.5)
+        distance = min(int(12 * ds + 0.5), max(1, (top - p) // 3))
         y = [v if not p < k <= top else 0j for k, v in enumerate(x)]
         for k in range(p + 1, top + 1):
             if k + distance <= top:
@@ -35,11 +35,12 @@ def reference(values, shift, fold, scramble, seed, ceiling, protect):
         x = [x[k] * (1 - ds) + y[k] * ds if p < k <= top else x[k]
              for k in range(129)]
     if df and top > p + 1:
-        pivot = (p + top) // 2
+        span = max(1, min(8, (top - p) // 2))
+        period = 2 * span
         y = [v if not p < k <= top else 0j for k, v in enumerate(x)]
         for k in range(p + 1, top + 1):
-            target = k if k <= pivot else 2 * pivot - k
-            target = max(p + 1, target)
+            offset = (k - p - 1) % period
+            target = p + 1 + (offset if offset <= span else period - offset)
             y[target] += x[k]
         x = [x[k] * (1 - df) + y[k] * df if p < k <= top else x[k]
              for k in range(129)]
