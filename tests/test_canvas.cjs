@@ -92,7 +92,7 @@ for(const name of Object.keys(faces)){
     nowMs:1000,values:{wavetable:1,osc2_wavetable:24,position:30,osc2_position:80,cutoff:45,resonance:50,lfo_depth:60,voice_activity:1}
   });
   assert(lines.length>30, name+' face has no trace');
-  assert.equal(labels.length,name==='main'?6:4,name+' face needs four meters plus optional oscillator labels');
+  assert.equal(labels.length,name==='main'?6:name==='filter'?4:5,name+' face needs four meters and oscillator source identifier');
 }
 const faceLines=(name)=>{const lines=[];faces[name]({...ctx,line(...args){lines.push(args);}},{
   nowMs:1000,values:{wavetable:1,osc2_wavetable:24,position:30,osc2_position:80,cutoff:45,resonance:50}
@@ -293,6 +293,33 @@ for(const face of ['osc1','osc2']){
                   face+' direct voice-activity read must override older snapshot');
 }
 console.log('PASS: both OSC spectral canvases animate legacy WT with Shift, Fold, Scramble and live note activity');
+// Spectral canvas has exactly the same drawing engine as OSC1/OSC2 but
+// uses its own assigned S/F/X/Wavetable knobs. A source ID readout makes
+// stale or disconnected Curated values visible immediately on real hardware.
+for(const osc of [1,2]){
+ const face='osc'+osc;
+ const keys=['osc'+osc+'_spectral_shift','osc'+osc+'_spectral_fold',
+             'osc'+osc+'_spectral_scramble',osc===1?'wavetable':'osc2_wavetable'];
+ const source=osc===1?'wavetable':'osc2_wavetable';
+ const cid='curated_osc'+osc;
+ const mode='osc'+osc+'_source_curated';
+ const labels=[];
+ named['sprig_'+face].drawPage({...ctx,print(x,y,label){labels.push(label);}},{
+   nowMs:1000,keys,values:{face_snapshot:snapshot({[source]:115,[cid]:8,[mode]:1,
+                                      [keys[0]]:40,[keys[1]]:70,[keys[2]]:95})}
+ });
+ for(const meter of ['S','F','X','T'])assert(labels.includes(meter),
+        face+' missing active spectral meter '+meter);
+ assert(labels.includes('C08'),face+' must display active Curated 8');
+ const regular=[];
+ named['sprig_'+face].drawPage({...ctx,print(x,y,label){regular.push(label);}},{
+   nowMs:1000,keys,values:{face_snapshot:snapshot({[source]:30,[cid]:8,[mode]:0,
+                                      [osc===1?'raw_wavetable':'raw_osc2_wavetable']:30})}
+ });
+ assert(regular.includes('W030'),face+' must show active regular Wavetable 30');
+}
+console.log('PASS: spectral pages render oscillator waveform, S/F/X meters and readable active source ID');
+
 
 
 console.log('PASS: OSC1, OSC2, MAIN and FILTER native face snapshots, warp and motion');
