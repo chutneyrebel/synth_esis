@@ -44,7 +44,7 @@ def validate_patch(patch):
 
 def default_patch(name="Init"):
     return validate_patch({"schema": SCHEMA, "module_id": MODULE_ID, "name": name,
-        "parameters": {key: spec["default"] for key, spec in parameter_specs().items()}})
+        "parameters": {key: spec.get("default", 0) for key, spec in parameter_specs().items()}})
 
 def serialize_patch(patch):
     validate_patch(patch)
