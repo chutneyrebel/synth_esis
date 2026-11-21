@@ -7,6 +7,7 @@ All values come from generated historical tables; the original tables remain
 untouched and zero-depth lookup bypasses this bank bit-for-bit.
 """
 import argparse
+import hashlib
 from pathlib import Path
 import re
 from spectral_composition import compose_from_base
@@ -97,4 +98,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
-    print("Generated", generate(args.output), "noncurated composition raw bytes", BYTES)
+    output = Path(args.output)
+    stamp = output.with_suffix(output.suffix + ".sha256")
+    inputs = (ROOT / "scripts/generate_noncurated_spectral.py",
+              ROOT / "scripts/spectral_composition.py",
+              ROOT / "scripts/generate_tables.py",
+              ROOT / "scripts/generate_expanded_tables.py",
+              ROOT / "src/tables.h",
+              ROOT / "src/expanded_tables.h")
+    digest = hashlib.sha256()
+    for source in inputs:
+        digest.update(source.read_bytes())
+    key = digest.hexdigest()
+    if output.exists() and stamp.exists() and stamp.read_text() == key:
+        print("Reusing unchanged", output, "noncurated raw bytes", BYTES)
+    else:
+        print("Generated", generate(output), "noncurated raw bytes", BYTES)
+        stamp.write_text(key)
