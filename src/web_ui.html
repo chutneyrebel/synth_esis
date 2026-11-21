@@ -28,7 +28,15 @@ footer{color:var(--dim);font-size:11px;padding-top:13px;line-height:1.5}
 <script>
 'use strict';
 const groups={
- osc:[['wavetable','OSC 1 Wavetable',0,107,1],['position','WT Position',0,100,1],['shape','Shape',0,100,1],['osc2_level','Osc 2 Mix',0,100,1],['detune','Osc 2 Detune',0,100,1],['osc2_wavetable','OSC 2 Wavetable',0,107,1],['osc2_position','OSC 2 WT Position',0,100,1],['osc1_warp_type','OSC 1 Warp Type',0,7,1],['osc1_warp','OSC 1 Warp Amount',0,100,1],['osc2_warp_type','OSC 2 Warp Type',0,7,1],['osc2_warp','OSC 2 Warp Amount',0,100,1],['osc1_octave','OSC 1 Octave',0,4,1],['osc2_octave','OSC 2 Octave',0,4,1],['osc1_detune','OSC 1 Detune',0,100,1],['osc2_detune','OSC 2 Fine Detune',0,100,1],['osc2_volume','OSC 2 Volume',0,100,1]],
+ osc:[['wavetable','OSC 1 Wavetable',0,107,1],['position','WT Position',0,100,1],['shape','Shape',0,100,1],['osc2_level','Osc 2 Mix',0,100,1],['detune','Osc 2 Detune',0,100,1],['osc2_wavetable','OSC 2 Wavetable',0,107,1],['osc2_position','OSC 2 WT Position',0,100,1],['osc1_warp_type','OSC 1 Warp Type',0,7,1],['osc1_warp','OSC 1 Warp Amount',0,100,1],['osc2_warp_type','OSC 2 Warp Type',0,7,1],['osc2_warp','OSC 2 Warp Amount',0,100,1],['osc1_octave','OSC 1 Octave',0,4,1],['osc2_octave','OSC 2 Octave',0,4,1],['osc1_detune','OSC 1 Detune',0,100,1],['osc2_detune','OSC 2 Fine Detune',0,100,1],['osc2_volume','OSC 2 Volume',0,100,1],
+ ['curated_osc1','Curated OSC 1 Source (0 = legacy)',0,16,1],
+ ['curated_osc2','Curated OSC 2 Source (0 = legacy)',0,16,1],
+ ['osc1_spectral_shift','OSC 1 Spectral Shift',0,100,1],
+ ['osc1_spectral_fold','OSC 1 Spectral Fold',0,100,1],
+ ['osc1_spectral_scramble','OSC 1 Spectral Scramble',0,100,1],
+ ['osc2_spectral_shift','OSC 2 Spectral Shift',0,100,1],
+ ['osc2_spectral_fold','OSC 2 Spectral Fold',0,100,1],
+ ['osc2_spectral_scramble','OSC 2 Spectral Scramble',0,100,1]],
  tone:[['cutoff','Cutoff',0,100,1],['resonance','Resonance',0,100,1],['drive','Drive',0,100,1],['filter_env_amt','Filter EG Amount',0,100,1],['filter_env_attack','Filter EG Attack',0,2000,1],['filter_env_decay','Filter EG Decay',0,2000,1],['level','Output',0,100,1]],
  motion:[['lfo_rate','Motion Rate',0,100,1],['lfo_depth','Motion Depth',0,100,1],['lfo_wt_depth','WT LFO Depth',0,100,1],['lfo_filter','Motion Filter',0,100,1]],
  amp:[['attack','Attack',0,2000,1],['decay','Decay',0,2000,1],['sustain','Sustain',0,100,1],['release','Release',0,2000,1]]
@@ -45,9 +53,12 @@ const curatedWaves=[
  ['Organic · Bloom',106],['Alien · Fracture',107]
 ];
 const curatedIds=new Set(curatedWaves.map(w=>w[1]));
+const curatedBankNames=['Legacy / Expanded','Sine','Saw','Square','Triangle','Odd',
+ 'Formant','Hollow','Metallic','Glass','Vocal','Organic','Resonant',
+ 'Bell Partials','Spectral Sweep','Fractal','Noise-like'];
 function categoryPicker(key){
  const wrapper=document.createElement('div');wrapper.className='field';
- const label=document.createElement('label');label.textContent=key==='wavetable'?'OSC 1 Curated Sounds':'OSC 2 Curated Sounds';
+ const label=document.createElement('label');label.textContent=key==='wavetable'?'OSC 1 Expanded/Core Sounds':'OSC 2 Expanded/Core Sounds';
  const picker=document.createElement('select');picker.setAttribute('aria-label',label.textContent);
  for(const [name,id] of curatedWaves){const opt=document.createElement('option');opt.value=String(id);opt.textContent=name+' · '+id;picker.append(opt)}
  const other=document.createElement('option');other.value='legacy';other.textContent='Other / Existing Preset';picker.append(other);
@@ -68,7 +79,7 @@ function control(key,name,min,max,step){
  if(key==='wave'||key==='wt_bank'||warpType||octaveType)(octaveType?octaveNames:warpType?warpNames:key==='wave'?waveNames:bankNames).forEach((w,i)=>{const opt=document.createElement('option');opt.value=String(i);opt.textContent=w;input.append(opt)});
  else{input.type='range';input.min=min;input.max=max;input.step=step;}
  input.setAttribute('aria-label',name);
- const change=()=>{val.textContent=octaveType?octaveNames[+input.value]:warpType?warpNames[+input.value]:key==='wave'?waveNames[+input.value]:key==='wt_bank'?bankNames[+input.value]:input.value;setParam(key,input.value);if(categoryPickers[key])categoryPickers[key].value=(curatedIds.has(Number(input.value))?String(input.value):'legacy');if(['wavetable','osc2_wavetable','position','shape'].includes(key))drawWave()};
+ const change=()=>{val.textContent=key==='curated_osc1'||key==='curated_osc2'?curatedBankNames[+input.value]:octaveType?octaveNames[+input.value]:warpType?warpNames[+input.value]:key==='wave'?waveNames[+input.value]:key==='wt_bank'?bankNames[+input.value]:input.value;setParam(key,input.value);if(categoryPickers[key])categoryPickers[key].value=(curatedIds.has(Number(input.value))?String(input.value):'legacy');if(['wavetable','osc2_wavetable','position','shape'].includes(key))drawWave()};
  input.addEventListener('input',change);input.addEventListener('change',change);
  root.append(input);fields[key]={input,val};return root;
 }
@@ -78,7 +89,7 @@ for(const key of ['wavetable','osc2_wavetable']){
  document.getElementById('osc').insertBefore(item.wrapper,fields[key].input.parentElement);
 }
 ;
-function update(key,v){const f=fields[key];if(!f)return;const n=Number(v);if(!Number.isFinite(n))return;f.input.value=String(n);f.val.textContent=(key==='osc1_octave'||key==='osc2_octave')?(octaveNames[n]||String(n)):(key==='osc1_warp_type'||key==='osc2_warp_type')?(warpNames[n]||String(n)):key==='wave'?waveNames[n]||String(n):key==='wt_bank'?bankNames[n]||String(n):String(n);if(categoryPickers[key])categoryPickers[key].value=(curatedIds.has(n)?String(n):'legacy');if(['wave','position','wt_bank','wt_table','spectral_shape','wavetable','shape'].includes(key))drawWave()}
+function update(key,v){const f=fields[key];if(!f)return;const n=Number(v);if(!Number.isFinite(n))return;f.input.value=String(n);f.val.textContent=(key==='curated_osc1'||key==='curated_osc2')?(curatedBankNames[n]||String(n)):(key==='osc1_octave'||key==='osc2_octave')?(octaveNames[n]||String(n)):(key==='osc1_warp_type'||key==='osc2_warp_type')?(warpNames[n]||String(n)):key==='wave'?waveNames[n]||String(n):key==='wt_bank'?bankNames[n]||String(n):String(n);if(categoryPickers[key])categoryPickers[key].value=(curatedIds.has(n)?String(n):'legacy');if(['wave','position','wt_bank','wt_table','spectral_shape','wavetable','shape'].includes(key))drawWave()}
 // Core preview follows the same harmonic recipes and four-frame interpolation
 // as scripts/generate_expanded_tables.py. It is not a live audio oscilloscope.
 function coreSample(id,frame,phase){
