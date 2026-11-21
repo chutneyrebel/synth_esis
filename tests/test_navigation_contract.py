@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_LEVELS = [
-    "osc1", "osc2", "filter", "motion", "matrix",
+    "osc1", "osc1_spectral", "osc2", "osc2_spectral", "filter", "motion", "matrix",
     "osc1_amp", "osc2_amp", "osc_mix",
 ]
 EXPECTED_FACE_KNOBS = [
@@ -38,6 +38,20 @@ class NavigationContractTests(unittest.TestCase):
         for key in EXPECTED_LEVELS:
             with self.subTest(level=key):
                 self.assertIn(key, levels)
+
+    def test_both_spectral_pages_render_oscillator_faces(self):
+        levels=self.module["capabilities"]["ui_hierarchy"]["levels"]
+        params={p["key"]:p for p in self.module["capabilities"]["chain_params"]}
+        for osc in (1,2):
+            face=f"face_osc{osc}"
+            level=f"osc{osc}_spectral"
+            self.assertEqual(levels[level]["params"],[face])
+            self.assertEqual(levels[level]["knobs"][:3],
+                             [f"osc{osc}_spectral_{effect}" for effect in ("shift","fold","scramble")])
+            self.assertEqual(params[face]["canvas_overlay"],f"sprig_osc{osc}")
+            self.assertEqual(params[face]["extra_keys"],
+                             ["face_snapshot","voice_activity",f"curated_osc{osc}"])
+            self.assertEqual(levels[f"osc{osc}"]["params"],[face])
 
     def test_no_unsupported_grid_suppression_flag(self):
         # Schwung 1.9.3 has not verified an opt-in grid-suppression

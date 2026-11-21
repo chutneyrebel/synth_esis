@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 const root=process.argv[2];
 if(!root) throw Error('Pass Schwung checkout path');
 const {planPages,pageSlotKeys}=await import(pathToFileURL(resolve(root,'src/shared/param_pages/page_plan.mjs')).href);
@@ -25,4 +26,24 @@ assert.equal(rootGrids(opted).length,0,'opt-in removes MAIN');
 assert.ok(opted.some(p=>p.level==='osc1'),'child level preserved');
 const overflow=run([true,true,false]);
 assert.ok(overflow.some(p=>p.keys?.includes('bonus')),'overflow remains reachable');
+// Use the *real* Synth_esis descriptor, not only a synthetic host fixture.
+// The same face overlay must appear on OSC and OSC Spectral with the
+// spectrum page's OWN knob assignments.
+const descriptor=JSON.parse(readFileSync('src/module.json','utf8'));
+const real=planPages({hierarchy:descriptor.capabilities.ui_hierarchy,
+                      chainParams:descriptor.capabilities.chain_params,
+                      trailingMenus:[]}).pages;
+for(const osc of [1,2]){
+  const face='face_osc'+osc;
+  const levels=['osc'+osc,'osc'+osc+'_spectral'];
+  for(const level of levels){
+    const matching=real.filter(p=>p.level===level && p.canvas?.key===face);
+    assert.equal(matching.length,1,
+      'Synth_esis '+level+' must have its waveform canvas on the actual Schwung planner');
+    assert.deepEqual(pageSlotKeys(matching[0]).filter(k=>k!==null),
+      descriptor.capabilities.ui_hierarchy.levels[level].knobs,
+      'Spectral waveform canvas must retain the spectral encoder bindings');
+  }
+}
+console.log('PASS: actual OSC1/OSC2 and spectral canvas pages rendered by Schwung planner');
 console.log('Schwung functional planner tests passed');

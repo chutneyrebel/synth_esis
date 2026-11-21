@@ -7,10 +7,13 @@ mkdir -p build dist
 python3 scripts/generate_metadata.py --check
 python3 scripts/generate_tables.py
 python3 scripts/generate_expanded_tables.py
+python3 scripts/generate_noncurated_spectral.py --output build/noncurated_spectral_tables.h
+python3 scripts/generate_curated_header.py --output build/curated_tables.h
 CC="${CC:-clang}"
 "$CC" --target=aarch64-linux-gnu -ffreestanding -nostdinc \
     -isystem "$($CC -print-resource-dir)/include" \
     -nostdlib -shared -fPIC -O2 -fvisibility=hidden \
+    -DSYNTH_ESIS_ENABLE_CURATED -Ibuild \
     -fno-stack-protector -fno-builtin -fuse-ld=lld \
     -Wl,-soname,dsp.so -Wl,--no-undefined \
     src/dsp.c -o build/dsp.so

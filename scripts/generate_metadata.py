@@ -37,7 +37,7 @@ def generate():
         p = by_key[key]
         if p.get("type") != "canvas" or p.get("as_page") is not True:
             raise SystemExit("invalid native face: " + key)
-        if p.get("canvas_script") != "canvas.js":
+        if p.get("canvas_script", "canvas.js") != "canvas.js":
             raise SystemExit("invalid canvas script: " + key)
         if len(p.get("extra_keys", [])) > 4:
             raise SystemExit("Schwung supports at most four canvas extras: " + key)

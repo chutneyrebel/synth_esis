@@ -131,20 +131,72 @@
     'osc1_pan','osc1_volume','osc2_wavetable','osc2_position',
     'osc2_warp_type','osc2_warp','osc2_detune','osc2_pan','osc2_volume',
     'shape','lfo_rate','lfo_depth','lfo_wt_depth','cutoff','resonance',
-    'drive','filter_env_amt','lfo_filter','master_pan','filter_type','voice_activity','matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate'
+    'drive','filter_env_amt','lfo_filter','master_pan','filter_type','voice_activity','matrix_cutoff_lfo1','matrix_cutoff_lfo2','lfo2_rate',
+    'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
+    'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble',
+    'curated_osc1','curated_osc2','osc1_source_curated','osc2_source_curated',
+    'raw_wavetable','raw_osc2_wavetable'
   ];
   function faceValues(o){
     const initial=(o&&o.values)||{};
-    if(typeof initial.face_snapshot!=='string')return initial;
+    const pageKeys=Array.isArray(o&&o.keys)?o.keys:[];
+    if(typeof initial.face_snapshot!=='string')return {...initial,_pageKeys:pageKeys};
     const parts=initial.face_snapshot.split(',');
-    if(parts.length!==snapshotKeys.length && parts.length!==26)return initial;
-    const result={...initial};
+    if(parts.length!==snapshotKeys.length && parts.length!==35 &&
+       parts.length!==29 && parts.length!==26)return {...initial,_pageKeys:pageKeys};
+    const result={...initial,_pageKeys:pageKeys};
     for(let i=0;i<parts.length;i++){
       const n=Number(parts[i]);
       if(!Number.isFinite(n))return initial;
-      result[snapshotKeys[i]]=n;
+      const key=snapshotKeys[i];
+      /* Canvas pages have live encoder/extra-key values alongside the
+       * staggered snapshot. The newer value must win, including 0 (silence
+       * or the 'legacy' curated selector). Preserve the snapshot separately
+       * for comparing source changes without overriding the knob. */
+      if(key==='voice_activity' && initial[key]!=null){
+        /* Reads are staggered. A fresh active voice from EITHER source must
+         * animate immediately; motion stops after both reach zero. */
+        result[key]=Math.max(n,Number(initial[key])||0);
+      }else if(initial[key]!=null){
+        result['snapshot_'+key]=n;
+      }else result[key]=n;
     }
     return result;
+  }
+  /* Schwung publishes the touched encoder key immediately, while
+   * face_snapshot is polled on a staggered extra-key schedule. Never let
+   * the older snapshot overwrite a newer curated knob detent.
+   * Keeping both values local to this paint avoids DSP-side reads. */
+  function activeSourceId(values, osc2) {
+    const legacyKey=osc2?'osc2_wavetable':'wavetable';
+    const curatedKey=osc2?'curated_osc2':'curated_osc1';
+    const modeKey=osc2?'osc2_source_curated':'osc1_source_curated';
+    const current=bounded(value(values,legacyKey,1),1,0,123)|0;
+    const raw=bounded(value(values,curatedKey,0),0,0,16)|0;
+    const mode=value(values,modeKey,NaN);
+    const snapshotSelected=value(values,'snapshot_'+curatedKey,NaN);
+    const legacy=bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',current),current,0,107)|0;
+    /* The knob has newer data than the staggered snapshot. In that short
+     * window its live selection wins. This also works when turning to 0. */
+    const pageKeys=values&&values._pageKeys||[];
+    const curatedKnob=pageKeys.indexOf(curatedKey)>=0;
+    if(Number.isFinite(snapshotSelected) && raw!==snapshotSelected){
+      /* A physical Curated knob is authoritative. Off-page curated extras
+       * can be older than face_snapshot, so the snapshot wins there. */
+      if(curatedKnob || pageKeys.length===0)return raw?107+raw:legacy;
+      return mode && snapshotSelected?107+snapshotSelected:legacy;
+    }
+    if(Number.isFinite(mode)){
+      const chosen=!curatedKnob && Number.isFinite(snapshotSelected)?snapshotSelected:raw;
+      return mode && chosen?107+chosen:legacy;
+    }
+    /* Pre-upgrade snapshot fallback: an oscillator page with the live curated
+     * key must respond to it directly, even when face_snapshot lags. */
+    if(values && values[curatedKey]!=null) {
+      return raw?107+raw:current<=107?current:
+        bounded(value(values,osc2?'raw_osc2_wavetable':'raw_wavetable',1),1,0,107)|0;
+    }
+    return current;
   }
   /* Same piecewise warp curves as DSP, drawn on a low-cost mono preview. */
   function warpedPhase(p,mode,amount){
@@ -159,9 +211,103 @@
     else if(mode===7){const steps=64-60*a;p=Math.floor(p*steps)/steps;}
     return Math.max(0,Math.min(.99999,p));
   }
+  /* Curated oscillator display uses the *active* ID from the DSP snapshot.
+   * This is a responsive harmonic illustration, not a measured FFT. Build
+   * only once per canvas render, then reuse coefficients for every pixel. */
+  const curatedCenters=[
+    [[1],[1],[1],[1]],
+    [[3,7,12],[3,10,19],[7,18,27],[12,24,33]],
+    [[3,7,11],[5,9,15],[9,17,25],[5,17,31]],
+    [[3,7,13],[5,11,19],[7,17,25],[15,23,33]],
+    [[3,7,15],[5,11,21],[9,17,29],[7,23,35]],
+    [[3,9,17],[5,14,23],[8,21,32],[4,26,36]],
+    [[4,10,17],[10,15,24],[19,26,33],[5,25,37]],
+    [[4,9,17],[8,14,23],[5,17,29],[11,20,33]],
+    [[2,5,11],[3,7,14],[2,9,17],[4,11,23]],
+    [[2,6,10],[3,8,12],[4,10,15],[2,11,18]],
+    [[1,5,9],[1,7,13],[1,9,17],[1,11,21]],
+    [[1,3,6],[1,5,10],[1,8,16],[1,12,24]],
+    [[2,7,13],[3,8,15],[2,10,19],[5,12,23]],
+    [[3,8,15],[5,11,20],[8,14,25],[11,19,33]],
+    [[1,3,7],[1,4,10],[1,5,13],[1,6,16]],
+    [[3,7,12],[5,11,17],[7,15,23],[9,19,29]]
+  ];
+  function curatedPreviewSpectrum(id,pos,shift,fold,scramble){
+    const top=24,kind=Math.max(0,Math.min(15,id-108));
+    const fpos=Math.max(0,Math.min(3,pos*3)),f0=Math.floor(fpos),f1=Math.min(3,f0+1);
+    let mix=fpos-f0;mix=mix*mix*(3-2*mix);
+    const weights=Array(top+1).fill(0);
+    for(let h=1;h<=top;h++){
+      if(id<108){
+        /* Lightweight illustrative partial set for 0..107. Their actual
+         * wet waveforms come from offline DSP banks, not an FFT in canvas. */
+        const type=id<4?id:Math.floor((id-4)/4)%8;
+        let w=type===0?1/Math.pow(h,1+.5*pos)
+          :type===1?(h%2?1:.03)/Math.pow(h,.9+.4*pos)
+          :type===2?(h%3===1?1:.05)/Math.pow(h,.65+.4*pos)
+          :type===3?(h%4===1?1:.03)/Math.pow(h,.5+.5*pos)
+          :(.1+.9*Math.abs(Math.sin(h*(.27+.07*type)+pos*3)))/Math.pow(h,.8);
+        if(id===0)w=h===1?1:0;
+        if(id===3)w=h%2?1/Math.pow(h,2.5-pos):0;
+        weights[h]=w;
+        continue;
+      }
+      if(kind===0){weights[h]=h===1?1:0;continue;}
+      const scene=(frame)=>{
+        const centers=curatedCenters[kind][frame];
+        let v=h===1?.23:.018/Math.sqrt(h);
+        if(kind===2 || kind===3 || kind===4){if((h&1)===0)v*=.08;}
+        for(let j=0;j<centers.length;j++){
+          const z=(h-centers[j])/(1.35+j*.55);
+          v+=[1.25,1.0,.65][j]*Math.exp(-.5*z*z);
+        }
+        return v;
+      };
+      weights[h]=(1-mix)*scene(f0)+mix*scene(f1);
+    }
+    /* Nearly pure original waveforms need a modest source for spectral
+     * permutation. This mirrors the wet-only offline harmonic scaffold,
+     * while neutral playback remains the original waveform. */
+    if(id<108 && shift+fold+scramble>0 && top>=8){
+      const low=weights[1]||1;
+      weights[6]+=.21*low;
+      weights[11]+=.16*low;
+      weights[17]+=.13*low;
+      weights[23]+=.10*low;
+    }
+    /* Keep the lower harmonics recognizable; spectral controls change the
+     * shape even when only one parameter is moved. */
+    const p=3;
+    let current=weights;
+    if(shift>0){
+      const next=current.slice(),dist=Math.max(1,Math.min(8,Math.round(shift*8)));
+      for(let k=p+1;k<=top;k++)next[k]=current[k]*(1-shift);
+      for(let k=p+1;k+dist<=top;k++)next[k+dist]+=current[k]*shift;
+      current=next;
+    }
+    if(fold>0){
+      const next=current.slice(),span=8,period=span*2;
+      for(let k=p+1;k<=top;k++)next[k]=current[k]*(1-fold);
+      for(let k=p+1;k<=top;k++){
+        const off=(k-p-1)%period,target=p+1+(off<=span?off:period-off);
+        next[target]+=current[k]*fold;
+      }
+      current=next;
+    }
+    if(scramble>0){
+      const next=current.slice(),count=top-p;
+      for(let k=p+1;k<=top;k++){
+        const src=p+1+(((k-p-1)*5+kind*3)%count);
+        next[k]=current[k]*(1-scramble)+current[src]*scramble;
+      }
+      current=next;
+    }
+    const norm=Math.max(.001,current.reduce((a,b)=>a+Math.abs(b),0));
+    return current.map(v=>v*(3.0/norm));
+  }
   function oscillatorPreview(phase,v,osc2,seconds,active){
     const prefix=osc2?'osc2_':'osc1_';
-    const id=bounded(value(v,osc2?'osc2_wavetable':'wavetable',1),1,0,107)|0;
+    const id=activeSourceId(v,osc2);
     const wave=Math.min(3,id),bank=id>=4?1:0,table=Math.max(0,id-4);
     const position=bounded(value(v,osc2?'osc2_position':'position',50),50,0,100)/100;
     const rate=bounded(value(v,'lfo_rate',22),22,0,100);
@@ -171,9 +317,24 @@
     const pos=Math.max(0,Math.min(1,position+modulation));
     const detune=bounded(value(v,prefix+'detune',50),50,0,100);
     const slip=active?seconds*(detune-50)*.0005776*2:0;
-    const raw=((phase+slip)%1+1)%1;
+    /* Note-gated movement is visible without requiring an LFO assignment.
+     * This is a visual phase drift, not a claim of live audio readback. */
+    const visualMotion=active?seconds*(.14+.006*(id%13)):0;
+    const raw=((phase+slip+visualMotion)%1+1)%1;
     const warped=warpedPhase(raw,bounded(value(v,prefix+'warp_type',0),0,0,7)|0,value(v,prefix+'warp',0));
     const shape=osc2?50:bounded(value(v,'shape',50),50,0,100);
+    const shift=bounded(value(v,prefix+'spectral_shift',0),0,0,100)/100;
+    const fold=bounded(value(v,prefix+'spectral_fold',0),0,0,100)/100;
+    const scramble=bounded(value(v,prefix+'spectral_scramble',0),0,0,100)/100;
+    if(id>=108 || shift+fold+scramble>0){
+      const cacheKey=osc2?'spectrum2':'spectrum1';
+      if(!v[cacheKey])v[cacheKey]=curatedPreviewSpectrum(id,pos,shift,fold,scramble);
+      const amps=v[cacheKey];
+      let sample=0;
+      for(let h=1;h<amps.length;h++)sample+=amps[h]*Math.sin(warped*6.28318530718*h+
+        (id>=115?h*h*.037+pos*3*h*.13:0));
+      return Math.max(-1,Math.min(1,sample));
+    }
     return displayedWave(warped,wave,pos,bank,table,shape,shape);
   }
   function drawOscillators(ctx,v,which,seconds,active,W,H){
@@ -291,8 +452,30 @@
         }
         pageMeters(ctx,[['R',value(v,'lfo_rate',22)],['D',value(v,'lfo_depth',0)],['F',value(v,'lfo_filter',0)],['P',value(v,'master_pan',50)]],H,W);
       }else{
-        const prefix=which==='osc2'?'osc2_':'osc1_';
-        pageMeters(ctx,[['W',value(v,prefix+'warp',0)],['T',value(v,which==='osc2'?'osc2_position':'position',50)],['P',value(v,prefix+'pan',50)],['V',value(v,prefix+'volume',which==='osc2'?0:100)]],H,W);
+        const is2=which==='osc2',prefix=is2?'osc2_':'osc1_';
+        const onSpectralPage=Array.isArray(o&&o.keys) &&
+          o.keys.indexOf(prefix+'spectral_shift')>=0;
+        if(onSpectralPage){
+          /* The same graph lives on the spectral page with its own knobs.
+           * Meter labels display the three *actual* spectral depths. */
+          pageMeters(ctx,[['S',value(v,prefix+'spectral_shift',0)],
+            ['F',value(v,prefix+'spectral_fold',0)],
+            ['X',value(v,prefix+'spectral_scramble',0)],
+            ['T',value(v,is2?'osc2_position':'position',50)]],H,W);
+        }else{
+          pageMeters(ctx,[['W',value(v,prefix+'warp',0)],
+            ['T',value(v,is2?'osc2_position':'position',50)],
+            ['P',value(v,prefix+'pan',50)],
+            ['V',value(v,prefix+'volume',is2?0:100)]],H,W);
+        }
+        /* Explicit active-source diagnostic. The previous previews looked
+         * almost identical and a failing snapshot could go unnoticed. */
+        const activeId=activeSourceId(v,is2);
+        const sourceLabel=activeId>=108
+          ?'C'+String(activeId-107).padStart(2,'0')
+          :'W'+String(activeId).padStart(3,'0');
+        ctx.fillRect(W-28,1,28,7,0);
+        ctx.print(W-27,1,sourceLabel,1);
       }
     }
   }

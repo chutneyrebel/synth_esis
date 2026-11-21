@@ -17,6 +17,62 @@ jobs:
         run: python3 scripts/generate_tables.py
       - name: Run desktop ABI and audio tests
         run: python3 tests/test_plugin.py
+      - name: Render curated 8-16 C3/C4 from actual host DSP
+        run: |
+          python3 scripts/render_curated_audio_previews.py --output-dir dist/curated-audio-AB
+          test "$(find dist/curated-audio-AB -maxdepth 1 -type f -name '*.wav' | wc -l)" -eq 18
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synth_esis-curated-audio-AB
+          path: dist/curated-audio-AB/*.wav
+          if-no-files-found: error
+          retention-days: 30
+      - name: Test isolated C spectral-bin prototype
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror tests/test_spectral_bins.c -lm -o /tmp/test_spectral_bins
+          /tmp/test_spectral_bins
+          cat > /tmp/se_probe.c <<'EOF'
+          #include "src/spectral_bins.h"
+          void probe(se_complex x[129]) { se_spectral_apply(x,1,1,1,42,127,3); }
+          EOF
+          clang --target=aarch64-linux-gnu -ffreestanding -nostdinc \
+            -isystem "$(clang -print-resource-dir)/include" \
+            -O2 -Wall -Wextra -Werror -c -I. /tmp/se_probe.c -o /tmp/test_spectral_bins_arm64.o
+          readelf -h /tmp/test_spectral_bins_arm64.o | grep -q AArch64
+      - name: Validate compositional spectral corners and DSP smoothing
+        run: python3 -m unittest discover -s tests -p 'test_spectral_composition.py'
+      - name: Compare C spectral output against Python oracle
+        run: python3 -m unittest discover -s tests -p 'test_spectral_c_parity.py'
+      - name: Benchmark isolated spectral engine on CI host
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror tests/bench_spectral_bins.c -o /tmp/bench_spectral_bins
+          /tmp/bench_spectral_bins
+      - name: Test composed spectral audio and oscillator isolation
+        run: python3 -m unittest discover -s tests -p 'test_spectral_audio_integration.py'
+      - name: Verify compositional spectral reference
+        run: python3 -m unittest discover -s tests -p 'test_spectral_reference.py'
+      - name: Test Phase 10 spectral shaping prototype and lookup guards
+        run: python3 -m unittest discover -s tests -p 'test_spectral_shape.py' && python3 -m unittest discover -s tests -p 'test_phase10_boundary.py' && python3 -m unittest discover -s tests -p 'test_shape_variants.py' && python3 -m unittest discover -s tests -p 'test_custom_wavetable.py' && python3 -m unittest discover -s tests -p 'test_curated_wavetables.py' && python3 -m unittest discover -s tests -p 'test_curated_export.py' && python3 -m unittest discover -s tests -p 'test_curated_header.py' && python3 -m unittest discover -s tests -p 'test_curated_integration.py' && python3 -m unittest discover -s tests -p 'test_aggressive_spectral.py'
+      - name: Export 16 curated custom wavetables
+        run: |
+          python3 scripts/export_curated_wavetables.py --output-dir dist/curated-wavetables
+          test "$(find dist/curated-wavetables -maxdepth 1 -name '*.json' | wc -l)" -eq 16
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synth_esis-curated-wavetables-preview
+          path: dist/curated-wavetables/*.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Generate optional curated C bank and check syntax
+        run: |
+          python3 scripts/generate_curated_header.py --output build/curated_tables.h
+          printf '#include "curated_tables.h"\nint main(void){return SYNTH_ESIS_CURATED_COUNT != 16;}\n' > build/curated_header_check.c
+          gcc -std=c11 -fsyntax-only -Ibuild build/curated_header_check.c
+          clang --target=aarch64-linux-gnu -ffreestanding -nostdinc \
+            -isystem "$(clang -print-resource-dir)/include" \
+            -O2 -c -Ibuild build/curated_header_check.c -o build/curated_header_check.o
+          readelf -h build/curated_header_check.o | grep -q AArch64
+          echo "Curated bank syntax and ARM64 object compilation passed; live DSP unchanged."
       - name: Validate Phase 10A preset schema
         run: python3 -m unittest discover -s tests -p 'test_preset_*.py'
       - name: Validate native factory preset export
