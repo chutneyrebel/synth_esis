@@ -152,7 +152,11 @@
        * staggered snapshot. The newer value must win, including 0 (silence
        * or the 'legacy' curated selector). Preserve the snapshot separately
        * for comparing source changes without overriding the knob. */
-      if(initial[key]!=null){
+      if(key==='voice_activity' && initial[key]!=null){
+        /* Reads are staggered. A fresh active voice from EITHER source must
+         * animate immediately; motion stops after both reach zero. */
+        result[key]=Math.max(n,Number(initial[key])||0);
+      }else if(initial[key]!=null){
         result['snapshot_'+key]=n;
       }else result[key]=n;
     }
