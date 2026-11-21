@@ -70,15 +70,35 @@ def compose_bins(bins, mask, ceiling, protect=PROTECTED_HARMONICS, seed=1):
     return x
 
 
-def compose_from_base(base, frame, limit, table, mask):
-    """Generate a bounded, DC-free, energy-matched corner from a base row."""
-    if len(base) != N or not 0 <= frame < 4 or not 0 <= table < 16:
+def compose_from_base(base, frame, limit, table, mask, base_spectrum=None):
+    """Generate a bounded, DC-free, energy-matched corner from a base row.
+
+    Extended to original 0..107 source IDs for full WT spectral support.
+    An optional precomputed spectrum avoids re-running the FFT seven times
+    for every table when building the immutable bank.
+    """
+    if len(base) != N or not 0 <= frame < 4 or not 0 <= table < 108:
         raise ValueError("invalid source row")
     if mask not in range(8) or limit not in BAND_LIMITS:
         raise ValueError("invalid corner or band")
     if mask == 0:
         return list(base)  # exact original, including float spelling
-    spectrum = _fft(base)[:N // 2 + 1]
+    spectrum = list(base_spectrum) if base_spectrum is not None else _fft(base)[:N // 2 + 1]
+    if len(spectrum) != N // 2 + 1:
+        raise ValueError("invalid prepared spectrum")
+    # A fundamentally pure waveform has no upper partials to move or fold.
+    # Seed a modest, fixed harmonic scaffold *only in the wet endpoints*,
+    # keeping dry lookup byte-identical while giving controls a sonic target.
+    if limit >= 8:
+        mid_energy = sum(abs(spectrum[k]) ** 2 for k in range(4, min(limit, 127) + 1))
+        low_energy = sum(abs(spectrum[k]) ** 2 for k in range(1, 4))
+        if low_energy > 1e-12 and mid_energy < .025 * low_energy:
+            fundamental = spectrum[1] if abs(spectrum[1]) > 1e-9 else spectrum[2]
+            for harmonic, level in ((6, .21), (11, .16), (17, .13), (23, .1)):
+                if harmonic <= limit:
+                    spectrum[harmonic] += fundamental * level * complex(
+                        math.cos(harmonic * .71 + frame * .3),
+                        math.sin(harmonic * .71 + frame * .3))
     # Fixed per-table/frame/band seed makes every mask a consistent composition.
     seed = ((table + 1) * 0x9e3779b1 ^ (frame + 1) * 0x85ebca6b ^ limit) & 0xffffffff
     positive = compose_bins(spectrum, mask, limit, seed=seed)
