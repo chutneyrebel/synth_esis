@@ -30,6 +30,25 @@ class CuratedWavetableTests(unittest.TestCase):
             a = generate_row(table, 0, 48)
             b = generate_row(table, 3, 48)
             self.assertGreater(max(abs(x-y) for x,y in zip(a,b)), 1e-5)
+    def test_position_changes_harmonic_magnitudes_not_just_phase(self):
+        # Old implementation varied phase noticeably while the audible
+        # magnitude spectrum barely moved. Require broad spectral travel.
+        def normalized_profile(table, frame, limit=48):
+            bins=_fft(generate_row(table,frame,limit))
+            magnitudes=[abs(bins[h]) for h in range(1,limit+1)]
+            mass=sum(magnitudes) or 1.0
+            return [x/mass for x in magnitudes]
+        for table in range(1,16):
+            profiles=[normalized_profile(table,f) for f in range(FRAMES)]
+            for f in range(3):
+                distance=sum(abs(a-b) for a,b in zip(profiles[f],profiles[f+1]))
+                self.assertGreater(distance,.18,
+                    (NAMES[table],f,f+1,"weak spectral position evolution",distance))
+        metallic=[normalized_profile(7,f) for f in range(FRAMES)]
+        for a,b in zip(metallic,metallic[1:]):
+            self.assertGreater(sum(abs(x-y) for x,y in zip(a,b)),.42,
+                               "Metallic Position must reshape harmonics")
+
     def test_sine_is_nearly_pure(self):
         bins = _fft(generate_row(0, 0, 96))
         self.assertLess(max(abs(x) for x in bins[2:96]), 1e-8)
