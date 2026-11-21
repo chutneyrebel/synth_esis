@@ -197,7 +197,7 @@ assert getp('voice_activity')=='0'
 hierarchy=json.loads(getp('ui_hierarchy'))
 assert hierarchy==meta['capabilities']['ui_hierarchy'], 'Live DSP legacy hierarchy differs from shipped metadata'
 assert 'levels' in hierarchy and 'root' in hierarchy['levels']
-assert any(isinstance(p,dict) and p.get('key')=='face' and p.get('type')=='canvas' for p in hierarchy['levels']['root']['params'])
+assert hierarchy['levels']['root']['params'][0]=='face' and face['type']=='canvas' and face['as_page'] is True, 'packed FACE must resolve to declared canvas'
 assert any(isinstance(p,dict) and p.get('level')=='osc2' for p in hierarchy['levels']['root']['params'])
 assert getp('module_id')=='synth_esis'
 assert getp('attack')=='10'

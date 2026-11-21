@@ -1,7 +1,7 @@
 name: Synth_esis (Schwung ARM64)
 on:
   push:
-    branches: ['main', 'development-phase12-*', 'development-phase12c-*', 'development-phase12d-*', 'development-phase12e-*', 'development-phase12f-*']
+    branches: ['main', 'development-phase12-*', 'development-phase12c-*', 'development-phase12d-*', 'development-phase12e-*', 'development-phase12f-*', 'development-phase12g-*']
   pull_request:
   workflow_dispatch:
 jobs:
@@ -15,6 +15,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y clang lld binutils python3 gcc
       - name: Verify canonical Schwung metadata and readable labels
         run: python3 scripts/pack_metadata.py --check && python3 scripts/generate_metadata.py --check
+      - name: Verify isolated browser UI assets and no DSP metadata drift
+        run: node tests/test_external_ui_assets.cjs
       - name: Generate independent wavetable data
         run: python3 scripts/generate_tables.py
       - name: Run desktop ABI and audio tests
