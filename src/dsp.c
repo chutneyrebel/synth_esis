@@ -40,6 +40,7 @@ typedef struct {
 typedef struct {
     int wavetable, shape, wave, wt_bank, wt_table, spectral_shape, legacy_shape, position, cutoff, resonance, attack, decay, sustain, release, level;
     int curated_osc1, curated_osc2;
+    int osc1_source_curated, osc2_source_curated; /* active bank, preserves both selections */
     int osc1_spectral_shift,osc1_spectral_fold,osc1_spectral_scramble;
     int osc2_spectral_shift,osc2_spectral_fold,osc2_spectral_scramble;
     int osc1_warp_type, osc1_warp, osc1_detune, osc1_octave, osc1_pan, osc1_volume;
@@ -169,6 +170,7 @@ static const Param params[]={
     P(attack,2000),P(decay,2000),P(sustain,100),P(release,2000),P(level,100),
     P(osc1_warp_type,7),P(osc1_warp,100),P(osc1_detune,100),P(osc1_octave,4),P(osc1_pan,100),P(osc1_volume,100),
     P(osc2_wavetable,107),P(osc2_position,100),P(osc2_warp_type,7),P(osc2_warp,100),P(osc2_detune,100),P(osc2_octave,4),P(osc2_pan,100),P(osc2_volume,100),
+    P(osc1_source_curated,1),P(osc2_source_curated,1),
     P(osc2_level,100),P(detune,100),P(lfo_rate,100),P(lfo_depth,100),P(lfo_wt_depth,100),P(drive,100),
     P(filter_type,7),P(filter_env_amt,100),P(filter_env_attack,2000),P(filter_env_decay,2000),P(lfo_filter,100),P(master_pan,100),P(osc1_env_enabled,1),P(osc2_env_enabled,1),P(osc1_attack,2000),P(osc1_decay,2000),P(osc1_sustain,100),P(osc1_release,2000),P(osc2_attack,2000),P(osc2_decay,2000),P(osc2_sustain,100),P(osc2_release,2000),P(mix_enabled,1),P(mix_balance,100),P(mod_dest,3),P(mod_depth,100),P(lfo2_rate,100),P(lfo2_dest,3),P(lfo2_depth,100),P(lfo1_waveform,5),P(lfo2_waveform,5),P(sync_bpm,240),P(lfo1_sync,5),P(lfo2_sync,5)
 };
@@ -178,12 +180,22 @@ static void set_one(Synth *s,const char *key,const char *value,int loading_state
     /* Direct legacy WT edits deactivate curated overrides; state recall does not. */
     if(eq(key,"wavetable")){
         s->wavetable=clampi(integer(value),0,107);
-        if(!loading_state)s->curated_osc1=0;
+        if(!loading_state)s->osc1_source_curated=0;
         return;
     }
     if(eq(key,"osc2_wavetable")){
         s->osc2_wavetable=clampi(integer(value),0,107);
-        if(!loading_state)s->curated_osc2=0;
+        if(!loading_state)s->osc2_source_curated=0;
+        return;
+    }
+    if(eq(key,"curated_osc1")){
+        s->curated_osc1=clampi(integer(value),0,16);
+        s->osc1_source_curated=s->curated_osc1!=0;
+        return;
+    }
+    if(eq(key,"curated_osc2")){
+        s->curated_osc2=clampi(integer(value),0,16);
+        s->osc2_source_curated=s->curated_osc2!=0;
         return;
     }
     if(eq(key,"matrix_source")){s->matrix_source=clampi(integer(value),0,1);return;}
@@ -217,6 +229,10 @@ static void set_param(void *instance,const char *key,const char *value){
          * state follows these new targets naturally without clicks. */
         s->osc1_spectral_shift=s->osc1_spectral_fold=s->osc1_spectral_scramble=0;
         s->osc2_spectral_shift=s->osc2_spectral_fold=s->osc2_spectral_scramble=0;
+        /* Legacy preset files did not serialize source mode. Infer curated
+         * selection from the saved curated index until explicit mode keys
+         * (present in newer state snapshots) override it. */
+        s->osc1_source_curated=s->osc2_source_curated=0;
         char k[32],v[24];int ix=0;
         while(value[ix] && ix<2048){
             int ki=0,vi=0;
@@ -255,9 +271,9 @@ static int get_param(void *instance,const char *key,char *buf,int len){
     if(eq(key,"face_snapshot")){
         /* One bounded derived read per canvas. Never persisted as a preset. */
         const int data[]={
-            (s->curated_osc1?107+s->curated_osc1:s->wavetable),s->position,s->osc1_warp_type,s->osc1_warp,
+            ((s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:s->wavetable),s->position,s->osc1_warp_type,s->osc1_warp,
             s->osc1_detune,s->osc1_pan,s->osc1_volume,
-            (s->curated_osc2?107+s->curated_osc2:s->osc2_wavetable),s->osc2_position,s->osc2_warp_type,
+            ((s->osc2_source_curated&&s->curated_osc2)?107+s->curated_osc2:s->osc2_wavetable),s->osc2_position,s->osc2_warp_type,
             s->osc2_warp,s->osc2_detune,s->osc2_pan,s->osc2_volume,
             s->shape,s->lfo_rate,s->lfo_depth,s->lfo_wt_depth,
             s->cutoff,s->resonance,s->drive,s->filter_env_amt,
@@ -544,17 +560,17 @@ static void render_block(void *instance,int16_t *out,int frames){
             int t0=(int)table,t1=t0<107?t0+1:107;float tm=table-(float)t0;
             float p1=warp_phase(v->phase/256.f,s->osc1_warp_type,clampf((float)s->osc1_warp+mx[4]*50.f,0.f,100.f))*256.f;
             /* Spectral processing applies equally to curated and legacy sources. */
-            int source1=s->curated_osc1?107+s->curated_osc1:t0;
+            int source1=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0;
             float x=spectral_morph_at(source1,pos,v->band,p1,
                 s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
-            if(!s->curated_osc1 && tm>.00001f)
+            if(!(s->osc1_source_curated&&s->curated_osc1) && tm>.00001f)
                 x+=(spectral_morph_at(t1,pos,v->band,p1,
                     s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2])-x)*tm;
             float sh=clampf((s->smooth_shape-50.f)/50.f,-1.f,1.f);
             if(sh!=0.f){
                 float ph1=p1+8.f,ph2=p1-8.f;
                 if(ph1>=256.f)ph1-=256.f;if(ph2<0.f)ph2+=256.f;
-                int shape_table=s->curated_osc1?107+s->curated_osc1:t0;
+                int shape_table=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0;
                 /* Shape samples the same spectral signal as the main oscillator. */
                 float left=spectral_morph_at(shape_table,pos,v->band,ph1,
                     s->smooth_spectral[0][0],s->smooth_spectral[0][1],s->smooth_spectral[0][2]);
@@ -565,7 +581,7 @@ static void render_block(void *instance,int16_t *out,int frames){
             }
             x*=.01f*clampf((float)s->osc1_volume+mx[8]*50.f,0.f,100.f);if(newmode)x*=gain1*amp1;
             float p2=warp_phase(v->phase2/256.f,s->osc2_warp_type,clampf((float)s->osc2_warp+mx[5]*50.f,0.f,100.f))*256.f;
-            int source2=s->curated_osc2?107+s->curated_osc2:s->osc2_wavetable;
+            int source2=(s->osc2_source_curated&&s->curated_osc2)?107+s->curated_osc2:s->osc2_wavetable;
             float second=spectral_morph_at(source2,pos2,v->band,p2,
                 s->smooth_spectral[1][0],s->smooth_spectral[1][1],s->smooth_spectral[1][2])*
                 (.01f*clampf((float)s->osc2_volume+mx[9]*50.f,0.f,100.f));
