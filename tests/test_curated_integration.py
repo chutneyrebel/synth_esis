@@ -26,10 +26,10 @@ class CuratedIntegrationTests(unittest.TestCase):
         self.assertEqual(by_key["curated_osc1"]["max"],16)
         self.assertEqual(by_key["curated_osc2"]["max"],16)
         dsp=(ROOT/"src/dsp.c").read_text()
-        self.assertIn("int source1=s->curated_osc1?107+s->curated_osc1:t0",dsp)
+        self.assertIn("int source1=(s->osc1_source_curated&&s->curated_osc1)?107+s->curated_osc1:t0",dsp)
         self.assertIn("float original=table_at(index,position,band,phase)",dsp)
         self.assertIn("if(total<=0.f)return original",dsp)
-        self.assertIn("int source2=s->curated_osc2?107+s->curated_osc2:s->osc2_wavetable",dsp)
+        self.assertIn("int source2=(s->osc2_source_curated&&s->curated_osc2)?107+s->curated_osc2:s->osc2_wavetable",dsp)
         self.assertIn("float second=spectral_morph_at(source2,pos2,v->band,p2",dsp)
         levels=json.loads((ROOT/"src/module.json").read_text())["capabilities"]["ui_hierarchy"]["levels"]
         self.assertEqual(levels["osc1"]["knobs"][0],"curated_osc1")
