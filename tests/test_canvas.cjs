@@ -191,6 +191,10 @@ function snapshot(extra={}){
     if(extra[mode]===undefined)state[mode]=state[legacy]>107?1:0;
     if(extra[raw]===undefined)state[raw]=Math.min(107,state[legacy]);
   }
+  for(const osc of [1,2])for(const axis of ['shift','fold','scramble']){
+    const key='effective_osc'+osc+'_spectral_'+axis;
+    if(extra[key]===undefined)state[key]=state['osc'+osc+'_spectral_'+axis];
+  }
   return snapshotOrder.map(k=>state[k]).join(',');
 }
 function nativeLines(face,extra={},nowMs=1000){
