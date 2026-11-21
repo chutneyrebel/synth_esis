@@ -6,7 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from preset_schema import default_patch, parse_patch, serialize_patch, validate_patch, parameter_specs
+from preset_schema import default_patch, parse_patch, serialize_patch, validate_patch, parameter_specs, migrate_legacy_patch
 
 class PresetSchemaTests(unittest.TestCase):
     def setUp(self):
@@ -24,7 +24,29 @@ class PresetSchemaTests(unittest.TestCase):
             {"Bass", "Lead", "Pad", "Drone", "Texture", "Rhythmic"})
         for entry in library["presets"]:
             self.assertTrue(entry["description"].strip())
-            self.assertEqual(parse_patch(serialize_patch(entry["patch"])), entry["patch"])
+            upgraded = migrate_legacy_patch(entry["patch"])
+            self.assertEqual(parse_patch(serialize_patch(upgraded)), upgraded)
+            self.assertNotIn("vel_f", entry["patch"]["parameters"])
+
+    def test_legacy_velocity_migration_is_neutral_and_strict(self):
+        old = copy.deepcopy(self.patch)
+        for key in ("vel_spec","vel_f","vel_s"):
+            old["parameters"].pop(key)
+        upgraded = migrate_legacy_patch(old)
+        self.assertEqual([upgraded["parameters"][k] for k in
+                          ("vel_spec","vel_f","vel_s")],[0,0,0])
+        # Phase 12D's single velocity amount drove all three axes.
+        old["parameters"]["vel_spec"] = 71
+        upgraded = migrate_legacy_patch(old)
+        self.assertEqual([upgraded["parameters"][k] for k in
+                          ("vel_spec","vel_f","vel_s")],[71,71,71])
+        old["parameters"].pop("cutoff")
+        with self.assertRaises(ValueError):
+            migrate_legacy_patch(old)
+        old["parameters"]["cutoff"] = 78
+        old["parameters"]["bogus"] = 2
+        with self.assertRaises(ValueError):
+            migrate_legacy_patch(old)
 
     def test_roundtrip(self):
         self.assertEqual(parse_patch(serialize_patch(self.patch)), self.patch)
