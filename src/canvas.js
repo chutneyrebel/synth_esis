@@ -135,15 +135,17 @@
     'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
     'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble',
     'curated_osc1','curated_osc2','osc1_source_curated','osc2_source_curated',
-    'raw_wavetable','raw_osc2_wavetable'
+    'raw_wavetable','raw_osc2_wavetable',
+    'effective_osc1_spectral_shift','effective_osc1_spectral_fold','effective_osc1_spectral_scramble',
+    'effective_osc2_spectral_shift','effective_osc2_spectral_fold','effective_osc2_spectral_scramble'
   ];
   function faceValues(o){
     const initial=(o&&o.values)||{};
     const pageKeys=Array.isArray(o&&o.keys)?o.keys:[];
     if(typeof initial.face_snapshot!=='string')return {...initial,_pageKeys:pageKeys};
     const parts=initial.face_snapshot.split(',');
-    if(parts.length!==snapshotKeys.length && parts.length!==35 &&
-       parts.length!==29 && parts.length!==26)return {...initial,_pageKeys:pageKeys};
+    if(parts.length!==snapshotKeys.length && parts.length!==41 &&
+       parts.length!==35 && parts.length!==29 && parts.length!==26)return {...initial,_pageKeys:pageKeys};
     const result={...initial,_pageKeys:pageKeys};
     for(let i=0;i<parts.length;i++){
       const n=Number(parts[i]);
@@ -323,9 +325,9 @@
     const raw=((phase+slip+visualMotion)%1+1)%1;
     const warped=warpedPhase(raw,bounded(value(v,prefix+'warp_type',0),0,0,7)|0,value(v,prefix+'warp',0));
     const shape=osc2?50:bounded(value(v,'shape',50),50,0,100);
-    const shift=bounded(value(v,prefix+'spectral_shift',0),0,0,100)/100;
-    const fold=bounded(value(v,prefix+'spectral_fold',0),0,0,100)/100;
-    const scramble=bounded(value(v,prefix+'spectral_scramble',0),0,0,100)/100;
+    const shift=bounded(value(v,'effective_'+prefix+'spectral_shift',value(v,prefix+'spectral_shift',0)),0,0,100)/100;
+    const fold=bounded(value(v,'effective_'+prefix+'spectral_fold',value(v,prefix+'spectral_fold',0)),0,0,100)/100;
+    const scramble=bounded(value(v,'effective_'+prefix+'spectral_scramble',value(v,prefix+'spectral_scramble',0)),0,0,100)/100;
     if(id>=108 || shift+fold+scramble>0){
       const cacheKey=osc2?'spectrum2':'spectrum1';
       if(!v[cacheKey])v[cacheKey]=curatedPreviewSpectrum(id,pos,shift,fold,scramble);
