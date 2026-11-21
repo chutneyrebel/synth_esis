@@ -23,7 +23,12 @@ static inline void se_spectral_apply(se_complex x[129],float shift,float fold,fl
      * At depth 1, shift by 12 bins; depth controls wet/dry and distance.
      */
     if(ds>0.f){
+        /* Keep Shift audible at upper pitch bands instead of dropping
+         * every harmonic beyond a fixed twelve-bin displacement. */
         int distance=(int)(12.f*ds+0.5f);
+        int max_distance=(top-p)/3;
+        if(max_distance<1)max_distance=1;
+        if(distance>max_distance)distance=max_distance;
         for(int k=0;k<129;k++){y[k]=x[k];if(k>p && k<=top){y[k].re=0;y[k].im=0;}}
         for(int k=p+1;k<=top;k++){
             int target=k+distance;
@@ -33,11 +38,17 @@ static inline void se_spectral_apply(se_complex x[129],float shift,float fold,fl
     }
     /* Fold: reflect upper harmonics about midpoint, accumulating collisions. */
     if(df>0.f && top>p+1){
-        int pivot=(p+top)/2;
+        /* Previous halfway pivot only touched nearly silent upper bins.
+         * Repeated triangular folding starts near harmonic 12, preserving
+         * bins 1..3 but acting on the audible midrange. */
+        int span=(top-p)/2;
+        if(span>8)span=8;
+        if(span<1)span=1;
+        int period=2*span;
         for(int k=0;k<129;k++){y[k]=x[k];if(k>p && k<=top){y[k].re=0;y[k].im=0;}}
         for(int k=p+1;k<=top;k++){
-            int target=k<=pivot?k:2*pivot-k;
-            if(target<=p)target=p+1;
+            int offset=(k-p-1)%period;
+            int target=p+1+(offset<=span?offset:period-offset);
             y[target].re+=x[k].re;y[target].im+=x[k].im;
         }
         for(int k=p+1;k<=top;k++)x[k]=se_mix(x[k],y[k],df);
