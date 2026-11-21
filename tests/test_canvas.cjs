@@ -291,6 +291,9 @@ for(const face of ['osc1','osc2']){
   const live=liveFaceLines(face,snap,{voice_activity:1});
   assert.notEqual(live,nativeLines(face,snap),
                   face+' direct voice-activity read must override older snapshot');
+  const snapshotActive=liveFaceLines(face,{...snap,voice_activity:1},{voice_activity:0});
+  assert.notEqual(snapshotActive,nativeLines(face,snap),
+                  face+' active voice in snapshot must win over stale direct zero');
 }
 console.log('PASS: both OSC spectral canvases animate legacy WT with Shift, Fold, Scramble and live note activity');
 // Spectral canvas has exactly the same drawing engine as OSC1/OSC2 but
