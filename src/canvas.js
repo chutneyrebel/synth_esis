@@ -148,7 +148,11 @@
       const n=Number(parts[i]);
       if(!Number.isFinite(n))return initial;
       const key=snapshotKeys[i];
-      if((key==='curated_osc1'||key==='curated_osc2') && initial[key]!=null){
+      /* Canvas pages have live encoder/extra-key values alongside the
+       * staggered snapshot. The newer value must win, including 0 (silence
+       * or the 'legacy' curated selector). Preserve the snapshot separately
+       * for comparing source changes without overriding the knob. */
+      if(initial[key]!=null){
         result['snapshot_'+key]=n;
       }else result[key]=n;
     }
@@ -205,14 +209,14 @@
     [[3,9,17],[5,14,23],[8,21,32],[4,26,36]],
     [[4,10,17],[10,15,24],[19,26,33],[5,25,37]],
     [[4,9,17],[8,14,23],[5,17,29],[11,20,33]],
-    [[6,13,20],[9,16,27],[4,19,33],[12,25,38]],
-    [[3,11,18],[5,14,23],[8,20,29],[4,9,34]],
-    [[3,6,11],[8,14,20],[16,25,31],[27,34,40]],
-    [[4,7,12],[9,15,23],[17,25,33],[30,36,41]],
-    [[2,5,9],[4,11,17],[7,15,26],[3,19,37]],
-    [[3,6,11],[9,15,22],[18,27,35],[34,39,43]],
-    [[3,7,11],[6,13,19],[11,23,35],[19,32,43]],
-    [[5,9,15],[11,18,27],[20,30,39],[35,41,45]]
+    [[2,5,11],[3,7,14],[2,9,17],[4,11,23]],
+    [[2,6,10],[3,8,12],[4,10,15],[2,11,18]],
+    [[1,5,9],[1,7,13],[1,9,17],[1,11,21]],
+    [[1,3,6],[1,5,10],[1,8,16],[1,12,24]],
+    [[2,7,13],[3,8,15],[2,10,19],[5,12,23]],
+    [[3,8,15],[5,11,20],[8,14,25],[11,19,33]],
+    [[1,3,7],[1,4,10],[1,5,13],[1,6,16]],
+    [[3,7,12],[5,11,17],[7,15,23],[9,19,29]]
   ];
   function curatedPreviewSpectrum(id,pos,shift,fold,scramble){
     const top=24,kind=Math.max(0,Math.min(15,id-108));
@@ -220,6 +224,20 @@
     let mix=fpos-f0;mix=mix*mix*(3-2*mix);
     const weights=Array(top+1).fill(0);
     for(let h=1;h<=top;h++){
+      if(id<108){
+        /* Lightweight illustrative partial set for 0..107. Their actual
+         * wet waveforms come from offline DSP banks, not an FFT in canvas. */
+        const type=id<4?id:Math.floor((id-4)/4)%8;
+        let w=type===0?1/Math.pow(h,1+.5*pos)
+          :type===1?(h%2?1:.03)/Math.pow(h,.9+.4*pos)
+          :type===2?(h%3===1?1:.05)/Math.pow(h,.65+.4*pos)
+          :type===3?(h%4===1?1:.03)/Math.pow(h,.5+.5*pos)
+          :(.1+.9*Math.abs(Math.sin(h*(.27+.07*type)+pos*3)))/Math.pow(h,.8);
+        if(id===0)w=h===1?1:0;
+        if(id===3)w=h%2?1/Math.pow(h,2.5-pos):0;
+        weights[h]=w;
+        continue;
+      }
       if(kind===0){weights[h]=h===1?1:0;continue;}
       const scene=(frame)=>{
         const centers=curatedCenters[kind][frame];
@@ -232,6 +250,16 @@
         return v;
       };
       weights[h]=(1-mix)*scene(f0)+mix*scene(f1);
+    }
+    /* Nearly pure original waveforms need a modest source for spectral
+     * permutation. This mirrors the wet-only offline harmonic scaffold,
+     * while neutral playback remains the original waveform. */
+    if(id<108 && shift+fold+scramble>0 && top>=8){
+      const low=weights[1]||1;
+      weights[6]+=.21*low;
+      weights[11]+=.16*low;
+      weights[17]+=.13*low;
+      weights[23]+=.10*low;
     }
     /* Keep the lower harmonics recognizable; spectral controls change the
      * shape even when only one parameter is moved. */
@@ -277,16 +305,16 @@
     const slip=active?seconds*(detune-50)*.0005776*2:0;
     /* Note-gated movement is visible without requiring an LFO assignment.
      * This is a visual phase drift, not a claim of live audio readback. */
-    const visualMotion=(active && id>=108)?seconds*(.011+.0014*(id-108)):0;
+    const visualMotion=active?seconds*(.14+.006*(id%13)):0;
     const raw=((phase+slip+visualMotion)%1+1)%1;
     const warped=warpedPhase(raw,bounded(value(v,prefix+'warp_type',0),0,0,7)|0,value(v,prefix+'warp',0));
     const shape=osc2?50:bounded(value(v,'shape',50),50,0,100);
-    if(id>=108){
+    const shift=bounded(value(v,prefix+'spectral_shift',0),0,0,100)/100;
+    const fold=bounded(value(v,prefix+'spectral_fold',0),0,0,100)/100;
+    const scramble=bounded(value(v,prefix+'spectral_scramble',0),0,0,100)/100;
+    if(id>=108 || shift+fold+scramble>0){
       const cacheKey=osc2?'spectrum2':'spectrum1';
-      if(!v[cacheKey])v[cacheKey]=curatedPreviewSpectrum(id,pos,
-        bounded(value(v,prefix+'spectral_shift',0),0,0,100)/100,
-        bounded(value(v,prefix+'spectral_fold',0),0,0,100)/100,
-        bounded(value(v,prefix+'spectral_scramble',0),0,0,100)/100);
+      if(!v[cacheKey])v[cacheKey]=curatedPreviewSpectrum(id,pos,shift,fold,scramble);
       const amps=v[cacheKey];
       let sample=0;
       for(let h=1;h<amps.length;h++)sample+=amps[h]*Math.sin(warped*6.28318530718*h+
