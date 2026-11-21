@@ -45,7 +45,8 @@ typedef struct {
     int osc1_source_curated, osc2_source_curated; /* active bank, preserves both selections */
     int osc1_spectral_shift,osc1_spectral_fold,osc1_spectral_scramble;
     int osc2_spectral_shift,osc2_spectral_fold,osc2_spectral_scramble;
-    int vel_spec; /* Phase 12C: note-on velocity-to-spectral-shift depth, 0 = legacy */
+    int vel_spec; /* Phase12C Shift velocity amount */
+    int vel_f,vel_s; /* Phase12E Fold and Scramble velocity amounts */
     int osc1_warp_type, osc1_warp, osc1_detune, osc1_octave, osc1_pan, osc1_volume;
     int osc2_wavetable, osc2_position, osc2_warp_type, osc2_warp, osc2_detune, osc2_octave, osc2_pan, osc2_volume;
     int osc2_level, detune, lfo_rate, lfo_depth, lfo_wt_depth, drive;
@@ -176,7 +177,7 @@ static const Param params[]={
     P(osc2_wavetable,107),P(osc2_position,100),P(osc2_warp_type,7),P(osc2_warp,100),P(osc2_detune,100),P(osc2_octave,4),P(osc2_pan,100),P(osc2_volume,100),
     P(osc1_source_curated,1),P(osc2_source_curated,1),
     P(osc2_level,100),P(detune,100),P(lfo_rate,100),P(lfo_depth,100),P(lfo_wt_depth,100),P(drive,100),
-    P(vel_spec,100),P(filter_type,7),P(filter_env_amt,100),P(filter_env_attack,2000),P(filter_env_decay,2000),P(lfo_filter,100),P(master_pan,100),P(osc1_env_enabled,1),P(osc2_env_enabled,1),P(osc1_attack,2000),P(osc1_decay,2000),P(osc1_sustain,100),P(osc1_release,2000),P(osc2_attack,2000),P(osc2_decay,2000),P(osc2_sustain,100),P(osc2_release,2000),P(mix_enabled,1),P(mix_balance,100),P(mod_dest,3),P(mod_depth,100),P(lfo2_rate,100),P(lfo2_dest,3),P(lfo2_depth,100),P(lfo1_waveform,5),P(lfo2_waveform,5),P(sync_bpm,240),P(lfo1_sync,5),P(lfo2_sync,5)
+    P(vel_spec,100),P(vel_f,100),P(vel_s,100),P(filter_type,7),P(filter_env_amt,100),P(filter_env_attack,2000),P(filter_env_decay,2000),P(lfo_filter,100),P(master_pan,100),P(osc1_env_enabled,1),P(osc2_env_enabled,1),P(osc1_attack,2000),P(osc1_decay,2000),P(osc1_sustain,100),P(osc1_release,2000),P(osc2_attack,2000),P(osc2_decay,2000),P(osc2_sustain,100),P(osc2_release,2000),P(mix_enabled,1),P(mix_balance,100),P(mod_dest,3),P(mod_depth,100),P(lfo2_rate,100),P(lfo2_dest,3),P(lfo2_depth,100),P(lfo1_waveform,5),P(lfo2_waveform,5),P(sync_bpm,240),P(lfo1_sync,5),P(lfo2_sync,5)
 };
 #define NP ((int)(sizeof(params)/sizeof(params[0])))
 static int *param_ptr(Synth *s,int i){return (int*)((char*)s+params[i].offset);}
@@ -242,7 +243,8 @@ static void set_param(void *instance,const char *key,const char *value){
         for(int src=0;src<2;src++)for(int dst=12;dst<18;dst++)
             s->matrix_depth[src][dst]=50;
         /* Pre-12C states have no velocity sensitivity. */
-        s->vel_spec=0;
+        s->vel_spec=s->vel_f=s->vel_s=0;
+        int seen_fold=0,seen_scram=0;
         char k[32],v[24];int ix=0;
         while(value[ix] && ix<2048){
             int ki=0,vi=0;
@@ -252,8 +254,13 @@ static void set_param(void *instance,const char *key,const char *value){
             while(value[ix] && value[ix]!=',' && vi<22)v[vi++]=value[ix++];
             v[vi]=0;
             if(value[ix]==',')ix++;
+            if(eq(k,"vel_f"))seen_fold=1;
+            if(eq(k,"vel_s"))seen_scram=1;
             set_one(s,k,v,1);
         }
+        /* Phase12D migration: its single vel_spec controlled all axes. */
+        if(!seen_fold)s->vel_f=s->vel_spec;
+        if(!seen_scram)s->vel_s=s->vel_spec;
         return;
     }
     set_one(s,key,value,0);
@@ -643,8 +650,9 @@ static void render_block(void *instance,int16_t *out,int frames){
                 v->spectral_artic*=1.f-1.f/(.42f*SR);
                 if(v->spectral_artic<.0001f){v->spectral_artic=0.f;v->spectral_artic_stage=0;}
             }
-            float fold_delta=vel_delta*v->spectral_artic;
-            float scram_delta=.65f*fold_delta;
+            float vel_center=(v->vel*127.f-64.f)*(1.f/63.f)*.0035f;
+            float fold_delta=vel_center*(float)s->vel_f*v->spectral_artic;
+            float scram_delta=.65f*vel_center*(float)s->vel_s*v->spectral_artic;
             float fold1=clampf(s->smooth_spectral[0][1]+fold_delta,0.f,1.f);
             float scram1=clampf(s->smooth_spectral[0][2]+scram_delta,0.f,1.f);
             float fold2=clampf(s->smooth_spectral[1][1]+fold_delta,0.f,1.f);
