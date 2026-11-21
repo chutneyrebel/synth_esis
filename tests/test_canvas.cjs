@@ -171,7 +171,9 @@ const snapshotOrder=[
   'osc1_spectral_shift','osc1_spectral_fold','osc1_spectral_scramble',
   'osc2_spectral_shift','osc2_spectral_fold','osc2_spectral_scramble',
   'curated_osc1','curated_osc2','osc1_source_curated','osc2_source_curated',
-  'raw_wavetable','raw_osc2_wavetable'
+  'raw_wavetable','raw_osc2_wavetable',
+  'effective_osc1_spectral_shift','effective_osc1_spectral_fold','effective_osc1_spectral_scramble',
+  'effective_osc2_spectral_shift','effective_osc2_spectral_fold','effective_osc2_spectral_scramble'
 ];
 function snapshot(extra={}){
   const state={wavetable:1,position:50,osc1_warp_type:0,osc1_warp:0,
@@ -341,6 +343,21 @@ for(const osc of [1,2]){
  assert(regular.includes('W030'),face+' must show active regular Wavetable 30');
 }
 console.log('PASS: spectral pages render oscillator waveform, S/F/X meters and readable active source ID');
+for(const face of ['osc1','osc2']){
+ const prefix=face+'_spectral_';
+ const wavetable=face==='osc1'?'wavetable':'osc2_wavetable';
+ const source=face==='osc1'?'osc1_source_curated':'osc2_source_curated';
+ const curated=face==='osc1'?'curated_osc1':'curated_osc2';
+ const steady=nativeLines(face,{[wavetable]:115,[source]:1,[curated]:8,
+                                   [prefix+'shift']:50,[prefix+'fold']:0,[prefix+'scramble']:0});
+ const moving=nativeLines(face,{[wavetable]:115,[source]:1,[curated]:8,
+                                   [prefix+'shift']:50,[prefix+'fold']:0,[prefix+'scramble']:0,
+                                   ['effective_'+prefix+'shift']:100});
+ assert.notEqual(steady,moving,
+    face+' must show effective spectral LFO depth, not just the unchanging knob base');
+}
+console.log('PASS: both oscillator faces show effective spectral LFO modulation');
+
 
 
 
