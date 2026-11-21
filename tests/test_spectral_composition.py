@@ -74,8 +74,8 @@ class ComposedSpectralTests(unittest.TestCase):
                 self.assertIn(f"s->smooth_spectral[{osc}][{axis}]+=.004f*", dsp)
         self.assertNotIn(".01f*s->osc1_spectral_shift", dsp)
         self.assertNotIn(".01f*s->osc2_spectral_shift", dsp)
-        self.assertIn("s->curated_osc1?spectral_morph_at", dsp)
-        self.assertIn("s->curated_osc2?spectral_morph_at", dsp)
+        self.assertIn("float x=spectral_morph_at(source1,pos,v->band,p1", dsp)
+        self.assertIn("float second=spectral_morph_at(source2,pos2,v->band,p2", dsp)
 
 
 if __name__ == "__main__":
