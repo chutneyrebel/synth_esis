@@ -460,9 +460,9 @@
         if(onSpectralPage){
           /* The same graph lives on the spectral page with its own knobs.
            * Meter labels display the three *actual* spectral depths. */
-          pageMeters(ctx,[['S',value(v,prefix+'spectral_shift',0)],
-            ['F',value(v,prefix+'spectral_fold',0)],
-            ['X',value(v,prefix+'spectral_scramble',0)],
+          pageMeters(ctx,[['S',value(v,'effective_'+prefix+'spectral_shift',value(v,prefix+'spectral_shift',0))],
+            ['F',value(v,'effective_'+prefix+'spectral_fold',value(v,prefix+'spectral_fold',0))],
+            ['X',value(v,'effective_'+prefix+'spectral_scramble',value(v,prefix+'spectral_scramble',0))],
             ['T',value(v,is2?'osc2_position':'position',50)]],H,W);
         }else{
           pageMeters(ctx,[['W',value(v,prefix+'warp',0)],
