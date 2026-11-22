@@ -661,7 +661,7 @@ print('PASS: Phase 5 six distinct LFO waveforms, original sine default, PCM boun
 
 for key in ('lfo1_waveform','lfo2_waveform'):
     descriptor=next(p for p in chain_params if p['key']==key)
-    assert descriptor['type']=='enum' and descriptor['default']==0
+    assert descriptor['type']=='enum' and descriptor.get('default', 0)==0, (key, descriptor)
     assert descriptor['options']==['Sine','Tri','Saw','Square','S&H','Smooth']
     assert key in meta['capabilities']['ui_hierarchy']['levels']['motion']['knobs']
     # Motion controls are exposed as level knobs; duplicate params are optional.
