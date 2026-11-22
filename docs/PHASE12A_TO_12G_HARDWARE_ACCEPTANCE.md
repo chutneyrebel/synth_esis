@@ -133,7 +133,8 @@ Setup for Fold/Scram: manual Shift 100 (to clamp Shift, isolating other axes), F
 **Use copies of old patches**, not the only saved originals. A factory export passing CI does not prove that *your* historical patches survive.
 
 - Before 12C: absent velocity keys must restore all velocity amounts to 0 and absent new matrix routes to depth 50.
-- 12C/12D state with `vel_spec=75` but absent `vel_f`, `vel_s`: the new keys must inherit 75 to preserve old combined behavior.
+- **12D** state with `vel_spec=75` but absent `vel_f`, `vel_s`: the new keys must inherit 75 to preserve the Phase12D combined velocity behavior.
+- **12C** state with nonzero `vel_spec`: this historically affected **Shift only**. The current 12E/G migration uses the same key to inherit Fold/Scramble for any old state missing both new keys. Without a saved schema/version marker the loader cannot distinguish 12C from 12D. **This is a known potential backward-sound regression: test it explicitly and mark FAIL if the previously Shift-only timbre changes. Do not claim universal backward sound compatibility until resolved.**
 - 12E/G saved state: three independent amounts must roundtrip without silently changing one another.
 - Curated source IDs and regular 0–107 WT selections must not change.
 
@@ -141,11 +142,12 @@ Setup for Fold/Scram: manual Shift 100 (to clamp Shift, isolating other axes), F
 |---|---|---|---|
 | P01 | Historical regular WT patch loads, sounds as before, and has neutral new spectral routing/velocity controls | ____ | ____ |
 | P02 | Historical curated WT patch loads with correct curated source, level and envelopes | ____ | ____ |
-| P03 | Phase12C/12D patch with nonzero `vel_spec` loads and Fold/Scram inheritance behaves as intended | ____ | ____ |
+| P03 | Phase12D patch with nonzero `vel_spec` loads and Fold/Scram inheritance matches previous combined response | ____ | ____ |
 | P04 | Save Phase12E/G patch with distinct Shift/Fold/Scram velocity values (e.g. 20/70/10), change values, then recall; all three restore | ____ | ____ |
 | P05 | Load an old patch after a new patch: no lingering newer velocity amounts, matrix offsets or changes to old defaults | ____ | ____ |
 | P06 | Save/recall with both oscillators, curated/regular sources, independent envelopes, filter settings and matrix destinations | ____ | ____ |
 | P07 | Existing user presets, MY PRESETS and module controls remain accessible; no corrupted or missing saved content | ____ | ____ |
+| P08 | Phase12C Shift-only patch with nonzero `vel_spec` must retain its original Shift-only timbre; if Fold/Scram articulation appears, mark FAIL (known migration ambiguity) | ____ | ____ |
 
 ## 6. Polyphony, stress and signal quality
 
@@ -205,7 +207,7 @@ N01–N08: __ / __ / __ / __ / __ / __ / __ / __
 A01–A06: __ / __ / __ / __ / __ / __
 M01–M07: __ / __ / __ / __ / __ / __ / __
 V01–V09: __ / __ / __ / __ / __ / __ / __ / __ / __
-P01–P07: __ / __ / __ / __ / __ / __ / __
+P01–P08: __ / __ / __ / __ / __ / __ / __ / __
 S01–S05: __ / __ / __ / __ / __
 R01–R08: __ / __ / __ / __ / __ / __ / __ / __
 
@@ -228,8 +230,8 @@ Tester notes: ______
 
 ## 10. Final Go/No-Go
 
-- **ACCEPT:** All mandatory I/N/A/M/V/P/S/R tests pass; any numeric precision-only V06 may be SKIP when a calibrated velocity source is unavailable *if* soft/hard playability tests pass, but document that limitation. No S0/S1/S2 defect remains unexplained; full Native+Remote UI acceptance requires R checks.
-- **CONDITIONAL / INCOMPLETE:** Browser-only R checks unavailable or optional precision checks skipped; continue working but do not call Phase12A–G fully hardware accepted.
+- **ACCEPT:** All mandatory I/N/A/M/V/P/S/R tests pass (including P08 if a historical Phase12C nonzero-velocity patch is available); any numeric precision-only V06 may be SKIP when a calibrated velocity source is unavailable *if* soft/hard playability tests pass, but document that limitation. No S0/S1/S2 defect remains unexplained; full Native+Remote UI acceptance requires R checks.
+- **CONDITIONAL / INCOMPLETE:** Phase12C nonzero-velocity compatibility (P08) untested or browser-only R checks unavailable or optional precision checks skipped; continue working but do not call Phase12A–G fully hardware accepted.
 - **REJECT / ROLLBACK:** Any S0/S1 regression, data loss, unsafe level, missing controls, or reproducible unacceptable performance.
 - **NO MERGE:** Even PASS is an acceptance report, not authorization to merge. The user must explicitly approve a merge in a separate action.
 
