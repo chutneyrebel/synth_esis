@@ -547,7 +547,8 @@ print('PASS: Phase 2 per-oscillator attack and opt-in mix balance change actual 
 # Phase 3 filter ABI and audio regression.
 filter_modes=['LP12','HP12','BP12','Notch','Peak','Allpass','LP24','HP24']
 descriptor=next(p for p in chain_params if p['key']=='filter_type')
-assert descriptor['options']==filter_modes and descriptor['default']==0
+# An omitted descriptor default means zero; verify the live DSP below.
+assert descriptor['options']==filter_modes and descriptor.get('default',0)==0
 assert 'filter_type' in meta['capabilities']['ui_hierarchy']['levels']['filter']['knobs']
 assert getp('filter_type')=='0', 'Legacy LP12 must remain the default'
 def filter_audio(mode):
