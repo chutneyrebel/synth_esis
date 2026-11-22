@@ -21,8 +21,11 @@ class CuratedIntegrationTests(unittest.TestCase):
         self.assertEqual(by_key["wavetable"]["max"],107)
         self.assertEqual(by_key["osc2_wavetable"]["max"],107)
         self.assertEqual(by_key["wt_bank"]["options"],["Legacy","Expanded"])
-        self.assertEqual(by_key["curated_osc1"]["default"],0)
-        self.assertEqual(by_key["curated_osc2"]["default"],0)
+        # Schwung permits an omitted default for zero-initialized controls.
+        # An explicit default, when supplied, must still be neutral.
+        for key in ("curated_osc1", "curated_osc2"):
+            self.assertEqual(by_key[key].get("default", 0), 0)
+            self.assertEqual(by_key[key]["min"], 0)
         self.assertEqual(by_key["curated_osc1"]["max"],16)
         self.assertEqual(by_key["curated_osc2"]["max"],16)
         dsp=(ROOT/"src/dsp.c").read_text()
