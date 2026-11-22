@@ -674,7 +674,17 @@ for key in ('sync_bpm','lfo1_sync','lfo2_sync'):
     # Motion controls are exposed as level knobs; duplicate params are optional.
     assert key in meta['capabilities']['ui_hierarchy']['levels']['motion']['knobs']
     assert key in meta['capabilities']['ui_hierarchy']['levels']['motion']['knobs']
-    assert desc['default']==(120 if key=='sync_bpm' else 0)
+    # Schwung descriptors may omit defaults; the DSP initializer is authoritative.
+    expected_default = 120 if key == 'sync_bpm' else 0
+    assert desc.get('default', expected_default) == expected_default, (key, desc)
+# Verify the implicit metadata defaults against a freshly initialized DSP instance.
+p=api.create(b'.',None)
+assert p
+for key,expected in [('sync_bpm',120),('lfo1_sync',0),('lfo2_sync',0)]:
+    value=C.create_string_buffer(64)
+    assert api.get(p,key.encode(),value,len(value))>=0
+    assert value.value.decode()==str(expected),(key,value.value)
+api.destroy(p)
 p=api.create(b'.',None)
 assert p
 for key,val in [('sync_bpm',135),('lfo1_sync',3),('lfo2_sync',5)]:
