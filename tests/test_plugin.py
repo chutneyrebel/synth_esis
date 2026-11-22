@@ -151,7 +151,7 @@ assert meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'][:2]==['lf
 assert all(k in meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'] for k in ('lfo_filter','cutoff','resonance','master_pan','level')), 'Synth Face missing live performance controls'
 assert meta['capabilities']['ui_hierarchy']['levels']['osc1']['params']==['face_osc1']
 assert meta['capabilities']['ui_hierarchy']['levels']['osc2']['params']==['face_osc2']
-assert len(meta['capabilities']['chain_params'])==82, 'Expected 76 legacy parameters plus six independent spectral controls'
+assert len(meta['capabilities']['chain_params'])==83, 'Expected existing 82 parameters plus opt-in velocity spectral control'
 assert [p['key'] for p in meta['capabilities']['chain_params'] if p['type']=='canvas']==['face','face_osc1','face_osc2','face_filter']
 # Schwung as_page canvases inherit the *level* knobs. Each face must own its level.
 expected_faces=[('face','sprig_main','root'),('face_osc1','sprig_osc1','osc1'),('face_osc2','sprig_osc2','osc2'),('face_filter','sprig_filter','filter')]
