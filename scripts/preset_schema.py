@@ -42,6 +42,31 @@ def validate_patch(patch):
             raise ValueError("parameter out of range: " + key)
     return patch
 
+def migrate_legacy_patch(patch):
+    """Explicit upgrade of an older valid-looking patch to the current set.
+
+    Missing expressive controls are supported; arbitrary missing/unknown keys
+    still fail strict validation. This never modifies the supplied dictionary.
+    """
+    if not isinstance(patch, dict):
+        raise ValueError("invalid patch")
+    migrated = json.loads(json.dumps(patch))
+    params = migrated.get("parameters")
+    if not isinstance(params, dict):
+        raise ValueError("invalid patch parameters")
+    specs = parameter_specs()
+    missing = set(specs) - set(params)
+    permitted = {"vel_spec", "vel_f", "vel_s"}
+    if not missing.issubset(permitted):
+        raise ValueError("missing non-migratable patch parameters")
+    if set(params) - set(specs):
+        raise ValueError("unknown patch parameters")
+    old_amount = params.get("vel_spec", 0)
+    params.setdefault("vel_spec", 0)
+    params.setdefault("vel_f", old_amount)
+    params.setdefault("vel_s", old_amount)
+    return validate_patch(migrated)
+
 def default_patch(name="Init"):
     return validate_patch({"schema": SCHEMA, "module_id": MODULE_ID, "name": name,
         "parameters": {key: spec.get("default", 0) for key, spec in parameter_specs().items()}})

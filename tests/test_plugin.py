@@ -151,7 +151,7 @@ assert meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'][:2]==['lf
 assert all(k in meta['capabilities']['ui_hierarchy']['levels']['root']['knobs'] for k in ('lfo_filter','cutoff','resonance','master_pan','level')), 'Synth Face missing live performance controls'
 assert meta['capabilities']['ui_hierarchy']['levels']['osc1']['params']==['face_osc1']
 assert meta['capabilities']['ui_hierarchy']['levels']['osc2']['params']==['face_osc2']
-assert len(meta['capabilities']['chain_params'])==83, 'Expected existing 82 parameters plus opt-in velocity spectral control'
+assert len(meta['capabilities']['chain_params'])==85, 'Expected Phase12C 83 parameters plus independent Fold/Scramble velocity controls'
 assert [p['key'] for p in meta['capabilities']['chain_params'] if p['type']=='canvas']==['face','face_osc1','face_osc2','face_filter']
 # Schwung as_page canvases inherit the *level* knobs. Each face must own its level.
 expected_faces=[('face','sprig_main','root'),('face_osc1','sprig_osc1','osc1'),('face_osc2','sprig_osc2','osc2'),('face_filter','sprig_filter','filter')]
@@ -547,7 +547,8 @@ print('PASS: Phase 2 per-oscillator attack and opt-in mix balance change actual 
 # Phase 3 filter ABI and audio regression.
 filter_modes=['LP12','HP12','BP12','Notch','Peak','Allpass','LP24','HP24']
 descriptor=next(p for p in chain_params if p['key']=='filter_type')
-assert descriptor['options']==filter_modes and descriptor['default']==0
+# An omitted descriptor default means zero; verify the live DSP below.
+assert descriptor['options']==filter_modes and descriptor.get('default',0)==0
 assert 'filter_type' in meta['capabilities']['ui_hierarchy']['levels']['filter']['knobs']
 assert getp('filter_type')=='0', 'Legacy LP12 must remain the default'
 def filter_audio(mode):
@@ -660,7 +661,7 @@ print('PASS: Phase 5 six distinct LFO waveforms, original sine default, PCM boun
 
 for key in ('lfo1_waveform','lfo2_waveform'):
     descriptor=next(p for p in chain_params if p['key']==key)
-    assert descriptor['type']=='enum' and descriptor['default']==0
+    assert descriptor['type']=='enum' and descriptor.get('default', 0)==0, (key, descriptor)
     assert descriptor['options']==['Sine','Tri','Saw','Square','S&H','Smooth']
     assert key in meta['capabilities']['ui_hierarchy']['levels']['motion']['knobs']
     # Motion controls are exposed as level knobs; duplicate params are optional.
@@ -673,7 +674,17 @@ for key in ('sync_bpm','lfo1_sync','lfo2_sync'):
     # Motion controls are exposed as level knobs; duplicate params are optional.
     assert key in meta['capabilities']['ui_hierarchy']['levels']['motion']['knobs']
     assert key in meta['capabilities']['ui_hierarchy']['levels']['motion']['knobs']
-    assert desc['default']==(120 if key=='sync_bpm' else 0)
+    # Schwung descriptors may omit defaults; the DSP initializer is authoritative.
+    expected_default = 120 if key == 'sync_bpm' else 0
+    assert desc.get('default', expected_default) == expected_default, (key, desc)
+# Verify the implicit metadata defaults against a freshly initialized DSP instance.
+p=api.create(b'.',None)
+assert p
+for key,expected in [('sync_bpm',120),('lfo1_sync',0),('lfo2_sync',0)]:
+    value=C.create_string_buffer(64)
+    assert api.get(p,key.encode(),value,len(value))>=0
+    assert value.value.decode()==str(expected),(key,value.value)
+api.destroy(p)
 p=api.create(b'.',None)
 assert p
 for key,val in [('sync_bpm',135),('lfo1_sync',3),('lfo2_sync',5)]:

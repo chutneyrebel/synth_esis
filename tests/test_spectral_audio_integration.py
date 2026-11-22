@@ -80,6 +80,73 @@ class SpectralAudioIntegration(unittest.TestCase):
         finally:
             self.api.destroy(synth)
 
+    def test_phase12e_velocity_routes_can_be_isolated(self):
+        """Each expressive control changes its own spectral axis with the
+        other two neutral; both oscillators should remain independently audible."""
+        def capture(osc, shift, fold, scram, controls):
+            synth=self.api.create(b".",None)
+            self.assertTrue(synth)
+            try:
+                settings={"attack":1,"decay":1,"sustain":100,
+                          "cutoff":100,"resonance":0,"shape":50,
+                          "curated_osc1":8,"curated_osc2":8,
+                          "osc1_volume":100 if osc==1 else 0,
+                          "osc2_volume":100 if osc==2 else 0,
+                          "osc1_spectral_shift":shift,"osc2_spectral_shift":shift,
+                          "osc1_spectral_fold":fold,"osc2_spectral_fold":fold,
+                          "osc1_spectral_scramble":scram,"osc2_spectral_scramble":scram,
+                          **controls}
+                for key,value in settings.items():
+                    self.setp(synth,key,value)
+                self.render(synth,100)
+                self.note(synth,60,120)
+                return self.render(synth,30)[128:]
+            finally:
+                self.api.destroy(synth)
+        for osc in (1,2):
+            # Saturate Shift so differences here cannot be attributed to it.
+            base = capture(osc,100,35,35,{"vel_spec":0,"vel_f":0,"vel_s":0})
+            folded = capture(osc,100,35,35,{"vel_spec":0,"vel_f":100,"vel_s":0})
+            scrambled = capture(osc,100,35,35,{"vel_spec":0,"vel_f":0,"vel_s":100})
+            self.assertGreater(rms([a-b for a,b in zip(base,folded)]),12,
+                               ("Fold control silent",osc))
+            self.assertGreater(rms([a-b for a,b in zip(base,scrambled)]),12,
+                               ("Scramble control silent",osc))
+            self.assertNotEqual(folded,scrambled)
+            neutral = capture(osc,35,35,35,{"vel_spec":0,"vel_f":0,"vel_s":0})
+            shifted = capture(osc,35,35,35,{"vel_spec":100,"vel_f":0,"vel_s":0})
+            self.assertGreater(rms([a-b for a,b in zip(neutral,shifted)]),12,
+                               ("Shift control silent",osc))
+
+    def test_phase12e_migrates_phase12d_state_without_losing_articulation(self):
+        synth=self.api.create(b".",None)
+        self.assertTrue(synth)
+        try:
+            self.api.set(synth,b"state",b"vel_spec=77,osc1_spectral_fold=40")
+            self.assertEqual(self.getp(synth,"vel_spec"),"77")
+            self.assertEqual(self.getp(synth,"vel_f"),"77")
+            self.assertEqual(self.getp(synth,"vel_s"),"77")
+            self.setp(synth,"vel_f",12)
+            self.setp(synth,"vel_s",93)
+            state=self.getp(synth,"state")
+            self.assertIn("vel_f=12",state)
+            self.assertIn("vel_s=93",state)
+            self.assertLess(len(state),2048)
+            other=self.api.create(b".",None)
+            self.assertTrue(other)
+            try:
+                self.api.set(other,b"state",state.encode())
+                self.assertEqual(self.getp(other,"vel_f"),"12")
+                self.assertEqual(self.getp(other,"vel_s"),"93")
+                self.api.set(other,b"state",b"curated_osc1=8,level=70")
+                self.assertEqual(self.getp(other,"vel_spec"),"0")
+                self.assertEqual(self.getp(other,"vel_f"),"0")
+                self.assertEqual(self.getp(other,"vel_s"),"0")
+            finally:
+                self.api.destroy(other)
+        finally:
+            self.api.destroy(synth)
+
     def test_phase12d_fold_scramble_envelope_decays_per_note(self):
         """With Shift pinned at its upper bound, audible changes must come
         from Fold/Scramble, and the transient should decay after note-on."""
@@ -95,7 +162,7 @@ class SpectralAudioIntegration(unittest.TestCase):
                             "osc1_spectral_scramble":40, "osc2_spectral_scramble":40,
                             "osc1_volume":100 if oscillator==1 else 0,
                             "osc2_volume":100 if oscillator==2 else 0,
-                            "vel_spec":amount}
+                            "vel_spec":amount,"vel_f":amount,"vel_s":amount}
                 for k, v in settings.items():
                     self.setp(synth,k,v)
                 self.render(synth,100)
@@ -127,7 +194,8 @@ class SpectralAudioIntegration(unittest.TestCase):
                             "resonance":0,"shape":50,"curated_osc1":8,
                             "osc1_volume":100,"osc2_volume":0,
                             "osc1_spectral_shift":100,"osc1_spectral_fold":45,
-                            "osc1_spectral_scramble":45,"vel_spec":100}.items():
+                            "osc1_spectral_scramble":45,"vel_spec":100,
+                            "vel_f":100,"vel_s":100}.items():
                     self.setp(synth,k,v)
                 self.render(synth,100)
                 self.note(synth,60,64)
